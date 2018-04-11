@@ -1,0 +1,5 @@
+## Ignore some files
+*.project
+*.pydevproject
+*.pyc
+*.DS_Store
