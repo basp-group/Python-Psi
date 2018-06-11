@@ -110,12 +110,12 @@ def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilon
     sigma2 = 1./param.nu2       # step size for the L2 dual update
     
     ### Reweight scheme ###
-    weights = np.ones((P, N))     # weight matrix
+    weights = np.ones_like(v1)     # weight matrix
     reweight_alpha = param.reweight_alpha           # used for weight update
     reweight_alpha_ff = param.reweight_alpha_ff     # # used for weight update
     
-    omega1 = param.omega1;          # omega sizes
-    omega2 = param.omega2;
+    omega1 = param.omega1          # omega sizes
+    omega2 = param.omega2
     
     gamma = param.gamma         # threshold
     

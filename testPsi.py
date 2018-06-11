@@ -17,25 +17,30 @@ from tools.radio import *
 from tools.maths import pow_method
 from pynufft.pynufft import NUFFT_cpu
 
-get_image = True
+get_image = False
 gen_uv = False
 
 ######## image loading ##############
 if get_image:
-    im = fits.getdata('data/M31_64.fits')           # reference image
+    im = fits.getdata('data/2_objects_different_profiles.fits')           # reference image
     im = im.squeeze()
+    im = im[:-1,:-1]
     imsize = im.shape                           # image size
+else:
+    imsize = (100,100)
 
 ##### simulated sampling control #######
 if gen_uv:
     pattern = 'gaussian'        # pattern of simulated sampling, 'gaussian', 'uniform' or 'geometric'
     holes = True
     simuparam = sparam()    # object of paramters of simulated sampling
+    simuparam.N = imsize[0] * imsize[1] 
+    simuparam.p = 0.2
     [u, v] = util_gen_sampling_pattern(pattern, holes, simuparam)
     uv = np.hstack((u[:,np.newaxis],v[:,np.newaxis]))
     fits.writeto('data/uv.fits', uv, overwrite=True)
 else:
-    uv = fits.getdata('data/uv_FR.fits')
+    uv = fits.getdata('data/uv_WL.fits')
 
 ########## non-uniform FFT control, using the package pynufft ##########
 Jd = (8,8)              # neighbour size for nufft
@@ -64,7 +69,10 @@ A, At, G, Gt, Gm, Gmt, Phi, Phi_t, Phim, Phim_t, mask_G = operators(st)
 
 ######## simulated data control ##########
 input_SNR = 10
-(y, yn) = util_gen_input_data(im, G, A, input_SNR)
+if gen_uv:
+    (y, yn) = util_gen_input_data(im, G, A, input_SNR)
+else:
+    yn = fits.getdata('data/real_object_visibilities_real.fits') + 1j* fits.getdata('data/real_object_visibilities_imag.fits')
 
 ############## SARA dictionary control ################
 wlt_basis = ['db1', 'db2', 'db3', 'db4', 'db5', 'db6', 'db7', 'db8', 'self']        # wavelet basis to construct SARA dictionary
@@ -92,13 +100,16 @@ dirty = np.real(At(Gt(yn)))
 
 ############## run FB primal-dual algo ##################
 imrec, l1normIter, l2normIter, relerrorIter = forward_backward_primal_dual(yn, A, At, Gm, Gmt, mask_G, sara, epsilon, epsilons, fbparam)
+fits.writeto('imrec.fits', imrec, overwrite=True)
+fits.writeto('dirty.fits', dirty, overwrite=True)
 
 ############### Results #####################
-plt.figure()
-plt.imshow(im, cmap='gist_stern')
-plt.title('Reference image')
-plt.colorbar()
-
+if get_image:
+    plt.figure()
+    plt.imshow(im, cmap='gist_stern')
+    plt.title('Reference image')
+    plt.colorbar()
+    
 plt.figure()
 plt.imshow(dirty, cmap='gist_stern')
 plt.title('Dirty image')
