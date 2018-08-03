@@ -19,7 +19,9 @@ def soft(alpha,th):
     @return: wavelet coefficients after soft threshold
     
     '''
-    return np.sign(alpha) * (np.abs(alpha) - th)
+    tmp = np.abs(alpha) - th
+    tmp = (tmp + np.abs(tmp))/2.
+    return np.sign(alpha) * tmp
 
 def hard(alpha,th):
     '''
@@ -32,9 +34,7 @@ def hard(alpha,th):
     @return: wavelet coefficients after hard threshold
     
     '''
-    coef = np.copy(alpha)
-    (coef)[np.abs(alpha)<=th] = 0
-    return coef 
+    return alpha * (alpha>0) 
 
 def proj_sc(alpha, rad):
     '''

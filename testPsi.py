@@ -15,16 +15,15 @@ from Psi.opt import *
 from Psi.proxTools import *
 from tools.radio import *
 from tools.maths import pow_method
-from pynufft.pynufft import NUFFT_cpu
+from pynufft.nufft import NUFFT_cpu
 
-get_image = False
-gen_uv = False
+get_image = True
+gen_uv = True
 
 ######## image loading ##############
 if get_image:
-    im = fits.getdata('data/2_objects_different_profiles.fits')           # reference image
+    im = fits.getdata('data/M31.fits')           # reference image
     im = im.squeeze()
-    im = im[:-1,:-1]
     imsize = im.shape                           # image size
 else:
     imsize = (100,100)
@@ -40,7 +39,7 @@ if gen_uv:
     uv = np.hstack((u[:,np.newaxis],v[:,np.newaxis]))
     fits.writeto('data/uv.fits', uv, overwrite=True)
 else:
-    uv = fits.getdata('data/uv_WL.fits')
+    uv = fits.getdata('data/uv.fits')
 
 ########## non-uniform FFT control, using the package pynufft ##########
 Jd = (8,8)              # neighbour size for nufft

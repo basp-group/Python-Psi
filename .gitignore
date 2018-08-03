@@ -3,3 +3,5 @@
 *.pydevproject
 *.pyc
 *.DS_Store
+*.mat
+*.fits
