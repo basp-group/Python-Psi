@@ -13,7 +13,7 @@ from Psi.proxTools import *
 from tools.maths import *
 
 ####### Optimization parameters ###################
-class optparam:
+class optparam(object):
     '''
     Optimization parameters
     '''
@@ -228,7 +228,208 @@ def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilon
     return xsol, l1normIter, l2normIter, relerrorIter
         
             
+ ############## Wide-band imaging based on primal-dual method ###################
+def wide_band_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilons, param):
+    '''
+    min ||Psit x||_2,1 + ||x||_* s.t. ||y - \Phi x||_2 <= epsilons
+    
+    @param y: input data, complex matrix of size [M, L], where columns represent bands
+    
+    @param A: function handle, direct operator F * Z * Dr
+    
+    @param At: function handle, adjoint operator of A
+    
+    @param G: vector of size [L] containing function handles of band-varying interpolation kernels, 
+        the kernel matrix is complex-valued of size [M,No]
+    
+    @param Gt: vector of size [L] containing function handles of adjoint band-varying interpolation kernels
+    
+    @param mask_G: mask of the values that have no contribution to the convolution, 
+        boolean matrix of size [L, No] where each row is a vector of size [No], No is equal to the size of the oversampling 
         
+    @param SARA: object of sara dictionary
+    
+    @param epsilon: vector of size [L] representing global l2 bound
+    
+    @param epsilons: vector of size [L] representing stop criterion of the global L2 bound, slightly bigger than epsilon
+    
+    @param param: object of optimization parameters, more details to see the class "optparam"
+    
+    @return: recovered image, real array of size [L, Nx, Ny]
+    '''
+    
+    K, L = np.shape(y)
+    P = SARA.lenbasis 
+    No = np.size(mask_G)        # total size of the oversampling
+    
+    Nx, Ny = SARA.Nx, SARA.Ny
+    N = Nx * Ny
+    
+    if hasattr(param, 'initsol'):                   # initialization of final solution x
+        xsol = param.initsol
+    else:
+        xsol = np.zeros((L, Nx, Ny)) 
+                    
+    v0 = np.zeros((L, N))                           # initialization of nuclear norm dual variable
+    v1 = np.zeros((P, L, N))                           # initialization of L21 dual variable
+    r1 = np.copy(v1)
+    vy1 = np.copy(v1)
+    u1 = np.zeros((P, L, Nx, Ny))
+    
+    v2 = np.zeros((K, L))                           # initialization of L2 dual variable
+    r2 = np.copy(v2)
+    vy2 = np.copy(v2)
+    
+    # initial variables in the primal gradient step
+    g0 = np.zeros_like(xsol)
+    g1 = np.zeros_like(xsol)
+    g2 = np.zeros_like(xsol)
+    
+    flag = 0                # solution flag: 0 - max iteration reached; 1 - solution found
+    
+    sigma0 = 1./param.nu0       # step size for the nuclear norm dual update
+    sigma1 = 1./param.nu1       # step size for the L21 dual update
+    sigma2 = 1./param.nu2       # step size for the L2 dual update
+    
+    tau = 0.99/(sigma0*param.nu0 + sigma1*param.nu1 + sigma2*param.nu2)     # step size for the primal
+    
+    omega0 = tau * sigma0          # omega sizes
+    omega1 = tau * sigma1          
+    omega2 = tau * sigma2
+    
+    ### Reweight scheme ###
+    weights0 = np.ones((L,1))       # weights matrix for nuclear-norm term
+    weights1 = np.ones_like(v1)     # weight matrix for l21-norm term
+    reweight_alpha = param.reweight_alpha           # used for weight update
+    reweight_alpha_ff = param.reweight_alpha_ff     # # used for weight update
+    
+    gamma = param.gamma         # threshold    
+    kappa0 = 1./sigma0
+    kappa1 = gamma/sigma1
+    
+    # relaxation parameters
+    lambda0 = param.lambda0
+    lambda1 = param.lambda1
+    lambda2 = param.lambda2
+    
+    reweight_step_count = 0
+    reweight_last_step_iter = 0
+    nuclearnormIter = np.zeros(param.max_iter)
+    l21normIter = np.zeros(param.max_iter, P)
+    l2normIter = np.zeros(param.max_iter)
+    relerrorIter = np.zeros(param.max_iter)
+    
+    for it in np.arange(param.max_iter):
+        
+        ### primal update ###
+        ysol = xsol - tau*(omega0 * g0 + omega1 * g1 + omega2 * g2)
+        ysol[ysol<=0] = 0              # Positivity constraint. Att: min(-param.im0, 0) in the initial Matlab code!
+        prev_xsol = np.copy(xsol)
+        xsol += lambda0 * (ysol - xsol)
+        
+        # compute relative error
+        norm_prevsol = LA.norm(prev_xsol)
+        if norm_prevsol == 0:
+            rel_error = 1
+        else:
+            rel_error = LA.norm(xsol - prev_xsol)/norm_prevsol
+        
+        prev_xsol = 2*ysol - prev_xsol
+        
+        ### Nuclear norm dual variable update ###
+        prev_xsol_mat = prev_xsol.reshape(np.size(prev_xsol)/L, L)        
+        tmp, s0 = nuclear_norm(v0 + prev_xsol_mat, kappa0 * weights0)       
+        nuclearnormIter[it] = np.abs(s0).sum()            # nuclear norm (l1-norm of the diagonal)
+        v0 += prev_xsol_mat - tmp
+        
+        ### L21 dual variable update ###
+        ## Update for all bases, parallelable ##       
+        for k in np.arange(P):
+            for l in np.arange(L):
+                if SARA.basis[k] == 'self':                             # processing for 'self' base, including normalization
+                    r1[k,l] = SARA.Psit[k](prev_xsol[l])/np.sqrt(P)
+                else:                                                   # processing for other basis, including normalization
+                    r1[k,l] = SARA.coef2vec(SARA.Psit[k](prev_xsol[l]))/np.sqrt(P)
+            vy1[k], l21normIter[it,k] = l21_norm(v1[k] + r1[k], kappa1 * weights1[k])
+            v1[k] += r1[k] - vy1[k]
+            for l in np.arange(L):
+                if SARA.basis[k] == 'self':                             # processing for 'self' base, including normalization
+                    u1[k,l] = SARA.Psi[k](weights1[k] * v1[k,l])/np.sqrt(P)
+                else:                                                   # processing for other basis, including normalization
+                    u1[k,l] = SARA.Psi[k](SARA.vec2coef(weights1[k] * v1[k,l]))/np.sqrt(P)                    
+                
+        ### L2 dual variable update ###
+        u2 = []
+        for l in np.arange(L):
+            ns = A(prev_xsol[l])                   # non gridded measurements of current solution
+            ns = ns.flatten()[mask_G[l]] 
+        
+            r2[:,l] = G[l](ns)
+            vy2[:,l] = v2[:,l] + r2[:,l] - y[:,l] - proj_sc(v2[:,l] + r2[:,l] - y[:,l], epsilon)
+            v2[:,l] = v2[:,l] + lambda2 * (vy2[:,l] - v2[:,l])
+            u2.append(Gt[l](v2[:,l]))
+                
+        if np.abs(y).sum() == 0:
+            u2 = []
+            r2[:] = 0
+
+        norm2 = LA.norm(r2 - y)             # norm of residual
+        
+        ## primal gradient update ##        
+        g1 = np.zeros(np.shape(xsol))
+        
+        for k in np.arange(P):
+            for l in np.arange(L):
+                g1 += sigma1[k] * u1[k,l]
+        
+        for l in np.arange(L):
+            uu = np.zeros((No,1)) + 1j*np.zeros((No,1))
+            uu[mask_G[l]] = u2[l]    
+            g2[l] = np.real(At(sigma2 * uu))
+        
+        l2normIter[it] = norm2
+        relerrorIter[it] = rel_error
+        
+        print('Iteration: ' + str(it+1))
+        print('Nuclear norm: ' + str(nuclearnormIter[it]))
+        print('L21 norm: ' + str(l21normIter[it]))
+        print('Residual: ' + str(norm2))
+        print('Relative error: ' + str(rel_error))
+        
+        ### weight update ###
+        if (param.use_reweight_steps and reweight_step_count < param.reweight_times and it+1-param.reweight_begin == param.reweight_step * reweight_step_count) or \
+        (param.use_reweight_eps and norm2 <= epsilons and param.reweight_min_steps_rel_obj < it  - reweight_last_step_iter and rel_error < param.reweight_rel_obj):
+            ## Update for nuclear-norm weights ##
+            ####### \alpha =  weight = \alpha / (\alpha + |S|)            
+            weights0 = reweight_alpha / (reweight_alpha + np.abs(s0))            
+            ## Update for all bases, parallelable ##
+            ####### \alpha =  weight = \alpha / (\alpha + |wt|)
+            for l in np.arange(L):
+                for k in np.arange(P): 
+                    if SARA.basis[k] == 'self': 
+                        weights1[k] = reweight_alpha / (reweight_alpha + abs(SARA.Psit[k](xsol)/np.sqrt(P)))
+                    else:              
+                        weights1[k] = reweight_alpha / (reweight_alpha + abs(SARA.coef2vec(SARA.Psit[k](xsol))/np.sqrt(P)))
+    
+            reweight_alpha = reweight_alpha_ff * reweight_alpha
+            weights_vec = weights1.flatten()
+            sigma1 = 1/SARA.power_method(1e-8, 200, weights_vec) * np.ones(P)           # Compute optimal sigma1 according to the spectral radius of the operator Psi * W
+            reweight_step_count += 1
+            reweight_last_step_iter = it
+            print('Reweighted scheme number: '+str(reweight_step_count))
+            
+        ### global stopping criteria ###
+        if rel_error < param.reweight_rel_obj and ((param.global_stop_bound and (norm2 <= epsilon)) or (not param.global_stop_bound and norm2 <= epsilon)):
+            flag = 1
+            break
+        
+    xsol[xsol<=0] = 0
+    l21normIter = l21normIter[:it+1]
+    l2normIter = l2normIter[:it+1]
+    relerrorIter = relerrorIter[:it+1]
+        
+    return xsol, l21normIter, l2normIter, relerrorIter
+           
         
         
     

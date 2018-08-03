@@ -9,7 +9,7 @@ import numpy as np
 import scipy.fftpack as scifft
 
 ##### Simulation parameters #####
-class sparam:
+class sparam(object):
     '''
     Simulation parameters
     '''
@@ -25,7 +25,7 @@ class sparam:
         self.sigma_holes = sigma_holes # variance of the gaussion for the holes
 
 ##### L2-ball parameters #####
-class l2param:
+class l2param(object):
     '''
     l2 ball parameters
     

@@ -8,7 +8,7 @@ ming.jiang@epfl.ch
 import numpy as np
 import pywt
 
-class SARA:
+class SARA(object):
     '''
     Class of SARA dictionary
     

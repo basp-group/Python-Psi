@@ -11,7 +11,7 @@ import scipy.fftpack as scifft
 
 from tools.radio import guessmatrix
 
-class redparam:
+class redparam(object):
     '''
     Fourier reduction parameters
     '''

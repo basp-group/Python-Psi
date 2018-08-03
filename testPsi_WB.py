@@ -22,7 +22,7 @@ gen_uv = True
 
 ######## image loading ##############
 if get_image:
-    im = fits.getdata('data/M31.fits')           # reference image
+    im = fits.getdata('data/W28_256.fits')           # reference image
     im = im.squeeze()
     imsize = im.shape                           # image size
 else:

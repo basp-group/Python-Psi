@@ -10,7 +10,7 @@ import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import scipy.io as sciio
 from scipy.sparse import coo_matrix
-from pynufft.pynufft import NUFFT_cpu
+from pynufft.nufft import NUFFT_cpu
 import time
 import pylab
 
