@@ -69,12 +69,6 @@ Dr = st.sn          # scaling matrix
 
 A, At, G, Gt, Gm, Gmt, Phi, Phi_t, Phim, Phim_t, mask_G = operators(st)
 
-if maskKernel:
-    PhitPhi = lambda x: Phim_t(Phim(x))
-else:
-    PhitPhi = lambda x: Phi_t(Phi(x))
-# PhitPhi = lambda x : operatorPhiTPhi(x, st, Nd, Kd, Mask_G)                 # Phi^T * Phi
-
 ######## simulated data control ##########
 (y, yn) = util_gen_input_data(im, G, A, input_SNR)
 
