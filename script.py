@@ -24,7 +24,10 @@ get_image = True
 gen_uv = False
 
 ###### parameters associated to Fourier reduction #######
-usingReduction = False
+usingReduction = True
+
+###### Non-Negative Least Squares initialization #######
+nnls_init = True
 
 ####### other parameters ##########
 maskKernel = True           # economic G matrix, recommend to set True 
@@ -117,9 +120,10 @@ else:
         nu2 = pow_method(Phim, Phim_t, Nd, 1e-6, 200)
     else:
         nu2 = pow_method(Phi, Phi_t, Nd, 1e-6, 200)
-fbparam = optparam(nu1=1.0,nu2=nu2,gamma=1.e-3,tau=0.49,max_iter=500, \
+fbparam = optparam(nu1=1.0,nu2=nu2,gamma=1.e-3,tau=0.49,max_iter=500, rel_obj=1.e-6, \
                    use_reweight_steps=True, use_reweight_eps=False, reweight_begin=300, reweight_step=50, reweight_times=4, \
-                   reweight_alpha=0.01, reweight_alpha_ff=0.5)
+                   reweight_alpha=0.01, reweight_alpha_ff=0.5, reweight_rel_obj = 1.e-6, \
+                   adapt_eps=True, adapt_eps_begin=100, adapt_eps_rel_obj=1.e-3)
 
 
 ############ dirty image ###############
@@ -127,14 +131,38 @@ dirty = np.real(At(Gt(yn)))
 
 ############## run FB primal-dual algo ##################
 print('Sparse recovery using Forward-Backward Primal-Dual')
+
+############## Initialization using NNLS ################
+if nnls_init:
+    nnlsparam = optparam(nu2=nu2,max_iter=200,rel_obj=1.e-6)                # Initialization parameters control
+    print('Initialization using Non-Negative Least Squares')
+    
 if usingReduction:
+    if nnls_init:
+        fbparam.initsol, epsilon = fb_nnls(ry, rPhi, rPhit, nnlsparam, FISTA=True)
+        print('Initialization: '+str(str(LA.norm(fbparam.initsol - im)/LA.norm(im))))
+        print('Estimated epsilon via NNLS: '+str(epsilon))
+        epsilons = fbparam.adapt_eps_tol_out*epsilon
     imrec, l1normIter, l2normIter, relerrorIter = forward_backward_primal_dual(ry, A, At, rG, rGt, mask_G, sara, epsilon, epsilons, fbparam)
 else:
     if maskKernel:
+        if nnls_init:
+            fbparam.initsol, epsilon = fb_nnls(yn, Phim, Phim_t, nnlsparam, FISTA=True)
+            print('Initialization: '+str(str(LA.norm(fbparam.initsol - im)/LA.norm(im))))
+            print('Estimated epsilon via NNLS: '+str(epsilon))
+            epsilons = fbparam.adapt_eps_tol_out*epsilon
         imrec, l1normIter, l2normIter, relerrorIter = forward_backward_primal_dual(yn, A, At, Gm, Gmt, mask_G, sara, epsilon, epsilons, fbparam)
     else:
+        if nnls_init:
+            fbparam.initsol = fb_nnls(yn, Phi, Phi_t, nnlsparam, FISTA=True)
+            print('Initialization: '+str(str(LA.norm(fbparam.initsol - im)/LA.norm(im))))
+            print('Estimated epsilon via NNLS: '+str(epsilon))
+            epsilons = fbparam.adapt_eps_tol_out*epsilon
         mask_G[:] = True 
         imrec, l1normIter, l2normIter, relerrorIter = forward_backward_primal_dual(yn, A, At, G, Gt, mask_G, sara, epsilon, epsilons, fbparam)
+
+
+print('Relative error of the reconstruction: '+str(LA.norm(imrec - im)/LA.norm(im)))
 
 ##### results ####
 plt.figure()

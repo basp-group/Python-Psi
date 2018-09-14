@@ -24,6 +24,9 @@ get_image = True
 gen_uv = False
 maskKernel = True           # economic G matrix, recommend to set True
 
+###### Non-Negative Least Squares initialization #######
+nnls_init = True
+
 if get_image:
     # im = fits.getdata('cluster.fits')
     im = fits.getdata('data/M31_64.fits')
@@ -110,6 +113,17 @@ fbparam = optparam(nu1=1.0,nu2=nu2,gamma=1.e-3,tau=0.49,max_iter=500, \
 dirty = np.real(At(Gt(yn)))
 
 ############## run FB primal-dual algo ##################
+print('Sparse recovery using Forward-Backward Primal-Dual')
+
+############## Initialization using NNLS ################
+if nnls_init:
+    nnlsparam = optparam(nu2=nu2,max_iter=200,rel_obj=1.e-6)                # Initialization parameters control
+    print('Initialization using Non-Negative Least Squares')
+    fbparam.initsol, epsilon = fb_nnls(ry, rPhi, rPhit, nnlsparam, FISTA=True)
+    print('Initialization: '+str(str(LA.norm(fbparam.initsol - im)/LA.norm(im))))
+    print('Estimated epsilon via NNLS: '+str(epsilon))
+    epsilons = fbparam.adapt_eps_tol_out*epsilon
+    
 imrec, l1normIter, l2normIter, relerrorIter = forward_backward_primal_dual(ry, A, At, rG, rGt, mask_G, sara, epsilon, epsilons, fbparam)
 
 

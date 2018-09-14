@@ -20,6 +20,9 @@ from pynufft.nufft import NUFFT_cpu
 get_image = True
 gen_uv = True
 
+###### Non-Negative Least Squares initialization #######
+nnls_init = True
+
 ######## image loading ##############
 if get_image:
     im = fits.getdata('data/M31.fits')           # reference image
@@ -98,7 +101,21 @@ fbparam = optparam(nu1=1.0,nu2=nu2,gamma=1.e-3,tau=0.49,max_iter=500, \
 dirty = np.real(At(Gt(yn)))
 
 ############## run FB primal-dual algo ##################
+print('Sparse recovery using Forward-Backward Primal-Dual')
+
+############## Initialization using NNLS ################
+if nnls_init:
+    nnlsparam = optparam(nu2=nu2,max_iter=200,rel_obj=1.e-6)                # Initialization parameters control
+    print('Initialization using Non-Negative Least Squares')
+    fbparam.initsol, epsilon = fb_nnls(yn, Phim, Phim_t, nnlsparam, FISTA=True)
+    print('Initialization: '+str(str(LA.norm(fbparam.initsol - im)/LA.norm(im))))
+    print('Estimated epsilon via NNLS: '+str(epsilon))
+    epsilons = fbparam.adapt_eps_tol_out*epsilon
+    
 imrec, l1normIter, l2normIter, relerrorIter = forward_backward_primal_dual(yn, A, At, Gm, Gmt, mask_G, sara, epsilon, epsilons, fbparam)
+
+print('Relative error of the reconstruction: '+str(LA.norm(imrec - im)/LA.norm(im)))
+
 fits.writeto('imrec.fits', imrec, overwrite=True)
 fits.writeto('dirty.fits', dirty, overwrite=True)
 
