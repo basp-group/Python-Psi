@@ -28,13 +28,13 @@ Astropy
 
 [pynufft](https://github.com/jyhmiinlin/pynufft), require Python 3.4 or later
 ```
-pip3 install PyWavelets
+pip3 install pynufft
 ```
 
 [PyWavelets](https://pywavelets.readthedocs.io/en/latest/#)
 
 ```
-pip3 install pynufft
+pip3 install PyWavelets
 ```
 
 ### Installing
