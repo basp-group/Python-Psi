@@ -3,5 +3,8 @@
 *.pydevproject
 *.pyc
 *.DS_Store
-*.fits
 *.mat
+*.fits
+.idea/
+data/
+*.mtx
