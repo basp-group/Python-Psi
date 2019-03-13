@@ -66,21 +66,29 @@ def nuclear_norm(mat, th, mode='soft'):
         return np.dot(U, np.dot(S1, Vh)), s1
 
 
-def l21_norm(alpha, th, mode='soft'):
+def l21_norm(alpha, th, mode='soft', axis=0):
     """
-    Proximity operator for joint sparsity. l2-norm on rows.
+    Proximity operator for joint sparsity. l2-norm on the given axis.
 
     :param alpha: coefficients to be processed, matrix of size [M, N]
-    :param th: threshold level, vector of size [M]
+    :param th: threshold level, the size of th should be consistent with the size of the other axis of alpha,
+                e.g. axis = 0, size(th) = N; axis = 1, size(th) = M
     :param mode: 'soft'-threshold or 'hard'-thresholding
     :return: coefficients after joint sparsity, l21-norm (after proximal operation)
     """
     import sys
 
-    l2norm = LA.norm(alpha, axis=1)
+    l2norm = LA.norm(alpha, axis=axis)
+    alpha_l21 = np.copy(alpha)
     ind = (l2norm > sys.float_info.epsilon)
     if mode == 'soft':
-        l2norm_th = soft(l2norm, th)
+        l2norm_th = soft(l2norm[ind], th)
     elif mode == 'hard':
-        l2norm_th = hard(l2norm, th)
-    return l2norm_th * alpha[ind] / l2norm[ind, np.newaxis], l2norm_th.sum()
+        l2norm_th = hard(l2norm[ind], th)
+    if axis == 0:
+        # !Att: multiplication based on array broadcasting
+        alpha_l21[:, ind] = np.multiply(l2norm_th / l2norm[ind], alpha[:, ind])
+    elif axis == 1:
+        # !Att: multiplication based on array broadcasting
+        alpha_l21 = np.multiply(l2norm_th / l2norm[ind], alpha[ind])
+    return alpha_l21, l2norm_th.sum()

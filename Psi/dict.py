@@ -131,21 +131,21 @@ class SARA(object):
         return val
         """
         x = np.random.randn(self.Nx, self.Ny)
-        x = x/np.linalg.norm(x, 'fro')
+        x = x/np.linalg.norm(x)
         init_val = 1
         
         for _ in np.arange(max_iter):
-            # Apply W Psit
+            # Apply Psit
             y = []
             for j in np.arange(self.lenbasis):
                 if self.basis[j] == 'self':
                     y = np.append(y, self.Psit[j](x)/np.sqrt(self.lenbasis))
                 else:
                     y = np.append(y, self.coef2vec(self.Psit[j](x))/np.sqrt(self.lenbasis))
-            y *= weights
+            # Apply W * W
+            y *= weights * weights
             
-            # Apply Psi W
-            y *= weights
+            # Apply Psi
             y = np.reshape(y, (self.lenbasis, int(np.size(y)/self.lenbasis)))
             
             x = np.zeros((self.Nx, self.Ny))
@@ -155,7 +155,7 @@ class SARA(object):
                 else:
                     x += self.Psi[j](self.vec2coef(y[j]))/np.sqrt(self.lenbasis)
                     
-            val = np.linalg.norm(x, 'fro')
+            val = np.linalg.norm(x)
             rel_var = np.abs(val-init_val) / init_val
             if rel_var < tol:
                 break
@@ -191,14 +191,14 @@ class hyperSARA(SARA):
     """
 
     def __init__(self, basis, nlevel, Nx, Ny, L):
-        super(SARA, self).__init__(self, basis, nlevel, Nx, Ny)
+        super().__init__(basis, nlevel, Nx, Ny)
         self.L = L
         self.Psi3 = lambda x: self.__rec3(x)
         self.Psit3 = lambda x: self.__dec3(x)
 
     def __rec3(self, alpha):
         """
-        :param alpha: hyperSARA coefficients of size [P, L, Nx, Ny]
+        :param alpha: hyperSARA coefficients of size [P, L, Nx*Ny]
         :return: wide-band image of size [L, Nx, Ny]
         """
         x = np.zeros((self.L, self.Nx, self.Ny))
@@ -214,7 +214,7 @@ class hyperSARA(SARA):
     def __dec3(self, x):
         """
         :param x: wide-band image of size [L, Nx, Ny]
-        :return: hyperSARA coefficients of size [P, L, Nx, Ny]
+        :return: hyperSARA coefficients of size [P, L, Nx*Ny]
         """
         alpha = np.zeros((self.lenbasis, self.L, self.Nx * self.Ny))
         for k in np.arange(self.lenbasis):
@@ -230,19 +230,19 @@ class hyperSARA(SARA):
         Overwrite SARA.power_method
         """
         x = np.random.randn(self.L, self.Nx, self.Ny)
-        x = x / np.linalg.norm(x, 'fro')
+        x = x / np.linalg.norm(x)
         init_val = 1
 
         for _ in np.arange(max_iter):
-            # Apply W Psit3
+            # Apply Psit3
             y = self.Psit3(x)
-            y *= weights
-
-            # Apply Psi3 W
-            y *= weights
+            for k in np.arange(self.lenbasis):
+                # Apply W * W
+                y[k] = np.multiply(y[k], weights[k] * weights[k])       # "broadcasting" multiplication
+            # Apply Psi3
             x = self.Psi3(y)
 
-            val = np.linalg.norm(x, 'fro')
+            val = np.linalg.norm(x)
             rel_var = np.abs(val - init_val) / init_val
             if rel_var < tol:
                 break

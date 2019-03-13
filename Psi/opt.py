@@ -18,26 +18,32 @@ class optparam(object):
     """
     Optimization parameters
     """
-    def __init__(self, positivity=True, nu1=1., nu2=1., gamma=1.e-3, tau=0.49, rel_obj=1.e-3, max_iter=200,
-                 lambda0=1., lambda1=1., lambda2=1., omega1=1., omega2=1., 
+    def __init__(self, positivity=True, nu0=1., nu1=1., nu2=1., gamma0=1., gamma=1.e-3, tau=0.49, rel_obj=1.e-3,
+                 max_iter=200, lambda0=1., lambda1=1., lambda2=1., lambda3=1., omega1=1., omega2=1.,
                  weights=1., global_stop_bound=True, use_reweight_steps=False, use_reweight_eps=False, 
                  reweight_begin=100, reweight_step=50, reweight_times=5, reweight_rel_obj=1.e-4,
-                 reweight_min_steps_rel_obj=100, reweight_alpha=0.01, reweight_alpha_ff=0.5,
+                 reweight_min_steps_rel_obj=100, reweight_alpha=0.01, reweight_alpha_ff=0.5, reweight_abs_of_max=1.,
                  adapt_eps=False, adapt_eps_begin=50, adapt_eps_rel_obj=1.e-3, adapt_eps_step=100,
                  adapt_eps_tol_in=0.99, adapt_eps_tol_out=1.01, adapt_eps_change_percentage=0.5*(np.sqrt(5)-1),
                  mask_psf=False,
                  precond=False):
         
         self.positivity = positivity
+        self.nu0 = nu0  # bound for the nuclear-norm term, for wide-band imaging
         self.nu1 = nu1  # bound on the norm of the operator Psi
         self.nu2 = nu2  # bound on the norm of the operator A*G
+        self.gamma0 = gamma0  # convergence parameter nuclear norm, for wide-band imaging
         self.gamma = gamma  # convergence parameter L1 (soft th parameter)
         self.tau = tau  # forward descent step size
         self.rel_obj = rel_obj  # stopping criterion
         self.max_iter = max_iter  # max number of iterations
         self.lambda0 = lambda0  # relaxation step for primal update
-        self.lambda1 = lambda1  # relaxation step for L1 dual update
-        self.lambda2 = lambda2  # relaxation step for L2 dual update
+        self.lambda1 = lambda1  # relaxation step for the first dual update, L1 variable in single-band imaging
+        # while nuclear-norm variable in wide-band imaging
+        self.lambda2 = lambda2  # relaxation step for the second dual update, L2 variable in single-band imaging
+        # while L21 variable in wide-band imaging
+        self.lambda3 = lambda3
+        # relaxation step for the third dual update, L2 variable in wide-band imaging
 #         self.sol_steps = [inf]  # saves images at the given iterations
         self.omega1 = omega1
         self.omega2 = omega2
@@ -53,6 +59,7 @@ class optparam(object):
         self.reweight_min_steps_rel_obj = reweight_min_steps_rel_obj 
         self.reweight_alpha = reweight_alpha  # coefficient in the reweight update function
         self.reweight_alpha_ff = reweight_alpha_ff  # factor to update the coefficient in the reweight update function
+        self.reweight_abs_of_max = reweight_abs_of_max  # this is assumed true signal and without penalisation
 
         self.adapt_eps = adapt_eps  # adaptive l2 bound
         self.adapt_eps_begin = adapt_eps_begin  # the beginning of the epsilon update
@@ -586,11 +593,14 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
     :param epsilons: vector of size [L] representing stop criterion of the global L2 bound, slightly bigger than epsilon
     :param param: object of optimization parameters, more details to see the class "optparam"
     :return: recovered image, real array of size [L, Nx, Ny]
+
+    :TODO preconditioning
+    :TODO adaptive epsilon
     """
 
     K, L = np.shape(y)
     P = HyperSARA.lenbasis
-    No = np.shape(mask_G)[0]        # total size of the oversampling
+    No = np.shape(mask_G)[1]        # total size of the oversampling
 
     Nx, Ny = HyperSARA.Nx, HyperSARA.Ny
     N = Nx * Ny
@@ -622,15 +632,17 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
 
     v0 = np.zeros((L, N))                           # initialization of nuclear norm dual variable
     v1 = np.zeros((P, L, N))                           # initialization of L21 dual variable
+    # vy1 = np.copy(v1)
+    vy1 = np.zeros((P, L, N))
 
     v2 = np.zeros((L, K))                           # initialization of L2 dual variable
-    r2 = np.copy(v2)
-    vy2 = np.copy(v2)
+    r2 = np.zeros((L, K))
+    vy2 = np.zeros((L, K))
 
     # initial variables in the primal gradient step
-    g0 = np.zeros_like(xsol)
-    g1 = np.zeros_like(xsol)
-    g2 = np.zeros_like(xsol)
+    g0 = np.zeros((L, Nx, Ny))
+    g1 = np.zeros((L, Nx, Ny))
+    g2 = np.zeros((L, Nx, Ny))
 
     sigma0 = 1./param.nu0       # step size for the nuclear norm dual update
     sigma1 = 1./param.nu1       # step size for the L21 dual update
@@ -643,8 +655,8 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
     omega2 = sigma2
 
     # Reweight scheme #
-    weights0 = np.ones((L, 1))       # weights matrix for nuclear-norm term
-    weights1 = np.ones_like(v1)     # weight matrix for l21-norm term
+    weights0 = np.ones(L)       # weights matrix for nuclear-norm term
+    weights1 = np.ones((P, N))     # weight matrix for l21-norm term
     reweight_alpha = param.reweight_alpha           # used for weight update
     reweight_alpha_ff = param.reweight_alpha_ff     # used for weight update
 
@@ -662,7 +674,7 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
     reweight_step_count = 0
     reweight_last_step_iter = 0
     nuclearnormIter = np.zeros(param.max_iter)
-    l21normIter = np.zeros(param.max_iter, P)
+    l21normIter = np.zeros((param.max_iter, P))
     l2normIter = np.zeros(param.max_iter)
     relerrorIter = np.zeros(param.max_iter)
 
@@ -670,7 +682,8 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
 
         # primal update #
         ysol = xsol - tau*(omega0 * g0 + omega1 * g1 + omega2 * g2)
-        ysol[ysol <= 0] = 0              # Positivity constraint. Att: min(-param.im0, 0) in the initial Matlab code!
+        if positivity:
+            ysol[ysol <= 0] = 0           # Positivity constraint. Att: min(-param.im0, 0) in the initial Matlab code!
         prev_xsol = np.copy(xsol)
         xsol += lambda0 * (ysol - xsol)
 
@@ -685,15 +698,16 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
 
         # Nuclear norm dual variable update #
         prev_xsol_mat = prev_xsol.reshape((L, N))
-        tmp, s0 = nuclear_norm(v0 + prev_xsol_mat, kappa0 * weights0)
+        tmp, s0 = nuclear_norm(v0.T + prev_xsol_mat, kappa0 * weights0)
         nuclearnormIter[it] = np.abs(s0).sum()            # nuclear norm (l1-norm of the diagonal)
         v0 = v0 + lambda1 * (prev_xsol_mat - tmp)
         g0 = np.reshape(v0, (L, Nx, Ny))
 
         # L21 dual variable update #
         # Update for all bases, parallelable #
-        r1 = HyperSARA.Psit3(prev_xsol)
-        vy1, l21normIter[it] = l21_norm(v1 + r1, kappa1 * weights1)
+        r1 = HyperSARA.Psit3(prev_xsol)         # r1 of size [P, L, N]
+        for k in np.arange(P):
+            vy1[k], l21normIter[it, k] = l21_norm(v1[k] + r1[k], kappa1 * weights1[k], axis=0)   # ps: l2-norm on the columns
         v1 = v1 + lambda2 * (r1 - vy1)
         g1 = sigma1 * HyperSARA.Psi3(v1)
 
@@ -706,7 +720,7 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
             r2[l] = G[l].dot(ns).flatten()
             vy2[l] = v2[l] + r2[l] - y[l] - proj_sc(v2[l] + r2[l] - y[l], epsilon)  # ! should be row vectors
             v2[l] = v2[l] + lambda3 * (vy2[l] - v2[l])
-            u2.append(Gt[l].dot(v2[l, np.newaxis].T))
+            u2.append(Gt[l].dot(v2[l, np.newaxis]))
 
         if np.abs(y).sum() == 0:
             u2 = []
@@ -740,7 +754,11 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
             weights0 = reweight_alpha / (reweight_alpha + np.abs(s0))
             # Update for all bases, parallelable #
             # \alpha =  weight = \alpha / (\alpha + |wt|)
-            weights1 = reweight_alpha / (reweight_alpha + abs(HyperSARA.Psit3(xsol)))
+            wt = HyperSARA.Psit3(xsol)
+            for k in np.arange(P):
+                d_val1 = LA.norm(wt[k], axis=0)
+                weights1[k] = reweight_alpha / (reweight_alpha + d_val1)
+                weights1[k][d_val1 > d_val1.max() * param.reweight_abs_of_max] = 0
             reweight_alpha = reweight_alpha_ff * reweight_alpha
             # Compute optimal sigma1 according to the spectral radius of the operator Psi * W
             sigma1 = 1 / HyperSARA.power_method(1e-8, 200, weights1)

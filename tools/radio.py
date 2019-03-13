@@ -162,7 +162,7 @@ def util_gen_input_data(im, G, A, input_snr):
     """
     Generate simulated data
 
-    :param im: reference vectorized image
+    :param im: reference image
     :param G: convolutional kernel, matrix
     :param A: function handle of the direct operator
     :param input_snr: SNR in dB
@@ -300,6 +300,53 @@ def operatorPhit(vis, Gt, At, paddingsize=None, M=None):
     return im
 
 
+def operatorPhi3(im, G, A, M=None):
+    """
+    This function implements the operator Phi = G * A
+
+    :param im: input image cube [L, Nx, Ny]
+    :param G: list of convolution kernels
+    :param A: function handle of direct operator F * Z
+    :param M: list of masks of the values that have no contribution to the convolution
+    :return: visibilities, column complex matrix [L, M]
+    """
+    L = len(G)
+    vis = []
+    for i in np.arange(L):
+        spec = A(im[i])
+        if M is not None:
+            spec = spec[M[i]]
+        tmp_vis = G[i].dot(spec)
+        vis.append(tmp_vis.flatten())
+    vis = np.array(vis)
+    return vis
+
+
+def operatorPhit3(vis, Gt, At, paddingsize=None, M=None):
+    """
+    This function implements the operator Phi*T = A^T * G^T
+
+    :param vis: input visibilities [L, N]
+    :param Gt: list of adjoint convolution kernels
+    :param At: function handle of adjoint operator Z^T * F^T
+    :param paddingsize: tuple of the oversampled image size, mandatory if M is not None
+    :param M: list of masks of the values that have no contribution to the convolution
+    :return: image, real cube [L, Nx, Ny]
+    """
+    L = len(Gt)
+    im = []
+    for i in np.arange(L):
+        protospec = Gt[i].dot(vis[i][:, np.newaxis])
+        if M is not None:
+            protospec1 = np.zeros((paddingsize[0]*paddingsize[1], 1)).astype('complex')
+            protospec1[M[i]] = protospec
+            protospec = protospec1
+        tmp_im = np.real(At(protospec))
+        im.append(tmp_im)
+    im = np.array(im)
+    return im
+
+
 def operators(st):
     kernel = st.sp
     imsize = st.Nd
@@ -370,3 +417,82 @@ def util_natWeight(sigma_noise, M):
         nW = coo_matrix((sigma_noise, (np.arange(M), np.arange(M))), shape=(M, M))
 
     return nW
+
+
+def generate_cube(im, f, emission=True):
+
+    import matplotlib.pyplot as plt
+
+    im = (im + np.abs(im)) / 2
+    im /= im.max()
+    Nx, Ny = im.shape
+
+    # Generate sources
+    col = np.array([22, 3, 192, 180, 191, 218, 148, 173, 81, 141, 104])
+    row = np.array([154, 128, 97, 77, 183, 174, 207, 188, 210, 139, 137])
+    r = np.array([18, 47, 30, 53, 21, 48, 15, 40, 17, 35, 71])
+
+    nS = np.size(col)
+    S = np.zeros((nS + 1, Nx * Ny))
+
+    foreground = np.zeros((Nx, Ny))
+
+    for i in np.arange(nS):
+        [X, Y] = np.meshgrid(np.arange(Nx) - row[i], np.arange(Ny) - col[i])
+        mask = (X**2 + Y**2) < r[i]**2
+        mask = mask.astype('bool')
+        if i == 9:
+            mask9 = ~mask
+        if i == 11:
+            mask10 = mask
+            mask = mask9 & mask10
+        s = im * mask
+        s[s < 5.e-3] = 0
+        S[i] = s.flatten()
+        foreground += s
+
+    # Background source
+    background = im - foreground
+    background[background < 0] = 0
+    S[-1] = background.flatten()
+
+    nS += 1
+
+    # Build spectra
+    alpha = np.array([0.3, 0.3, 0.5, 0.1, 0.3, 0.5, 0.1, 0.3, 0.5, 0.1, -10, 0.5])
+    beta = np.array([6, 6, 6, 5, 5, 5, 4, 4, 4, 3, -10, 5])
+    c = np.size(f)
+
+    H = np.zeros((c, nS))
+    HI = np.ones((c, nS))
+
+    k = 2
+    for i in np.arange(nS):
+        HI[k, i] = 2
+        HI[-k, i] = 1.5
+        HI[-k-1, i] = 2
+        HI[-k-2, i] = 1.5
+        HI[-k-3, i] = 2
+        HI[-k-4, i] = 1.5
+        k += 3
+
+    plt.figure()
+
+    for i in [10, 0, 1, 2, 4, 5, 6, 7, 9, 11]:
+        H[:, i] = (f/f[0]) ** (-alpha[i] + beta[i] * np.log(f/f[0]))
+        if emission:
+            H[:, i] *= HI[:, i]
+        plt.plot(H[:, i])
+
+    plt.show()
+
+    # Simulation of data cube
+    X0 = H.dot(S)
+    X0[X0 < 0] = 0
+
+    x0 = np.reshape(X0, (c, Nx, Ny))
+
+    return x0, X0
+
+
+
