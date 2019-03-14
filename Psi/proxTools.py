@@ -82,13 +82,13 @@ def l21_norm(alpha, th, mode='soft', axis=0):
     alpha_l21 = np.copy(alpha)
     ind = (l2norm > sys.float_info.epsilon)
     if mode == 'soft':
-        l2norm_th = soft(l2norm[ind], th)
+        l2norm_th = soft(l2norm, th)
     elif mode == 'hard':
-        l2norm_th = hard(l2norm[ind], th)
+        l2norm_th = hard(l2norm, th)
     if axis == 0:
         # !Att: multiplication based on array broadcasting
-        alpha_l21[:, ind] = np.multiply(l2norm_th / l2norm[ind], alpha[:, ind])
+        alpha_l21[:, ind] = np.multiply(l2norm_th[ind] / l2norm[ind], alpha[:, ind])
     elif axis == 1:
         # !Att: multiplication based on array broadcasting
-        alpha_l21 = np.multiply(l2norm_th / l2norm[ind], alpha[ind])
+        alpha_l21[ind] = np.multiply(l2norm_th[ind][:, np.newaxis] / l2norm[ind][:, np.newaxis], alpha[ind])
     return alpha_l21, l2norm_th.sum()

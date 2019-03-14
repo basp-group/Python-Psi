@@ -192,7 +192,7 @@ def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilon
     u1 = np.zeros((P, Nx, Ny))
     norm1 = np.zeros(P)
     
-    v2 = np.zeros((K, 1))                           # initialization of L2 dual variable
+    v2 = np.zeros((K, 1)).astype('complex')                           # initialization of L2 dual variable
     
     # initial variables in the primal gradient step
     g1 = np.zeros_like(xsol)
@@ -222,8 +222,8 @@ def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilon
     eps_it = 0
     reweight_step_count = 0
     reweight_last_step_iter = 0
-    eps_over = 0
-    eps_under = 0
+    # eps_over = 0
+    # eps_under = 0
     l1normIter = np.zeros(param.max_iter)
     l2normIter = np.zeros(param.max_iter)
     relerrorIter = np.zeros(param.max_iter)
@@ -282,19 +282,27 @@ def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilon
         
         # Adjust the l2 bound #
         if adapt_eps and it + 1 >= param.adapt_eps_begin and rel_error < param.adapt_eps_rel_obj \
-                and it + 1 >= eps_it + param.adapt_eps_step:
-            if norm2 < param.adapt_eps_tol_in * epsilon:                              # Current l2 ball over-estimated
-                epsilon = norm2 + (1 - param.adapt_eps_change_percentage) * (epsilon - norm2)
-                epsilons = param.adapt_eps_tol_out * epsilon                          # Update stopping epsilon
-                eps_over += 1
-                eps_it = it
-                print('Epsilon under-estimate, update to ' + str(epsilon))
-            elif norm2 > param.adapt_eps_tol_out * epsilon:                           # Current l2 ball under-estimated
-                epsilon = epsilon + param.adapt_eps_change_percentage * (norm2 - epsilon)
-                epsilons = param.adapt_eps_tol_out * epsilon                          # Update stopping epsilon
-                eps_under += 1
-                eps_it = it
-                print('Epsilon over-estimate, update to ' + str(epsilon))
+                and it + 1 >= eps_it + param.adapt_eps_step\
+                and (norm2 < param.adapt_eps_tol_in * epsilon or norm2 > param.adapt_eps_tol_out * epsilon):
+            # epsilon = epsilon + c * (norm2 - epsilon)
+            epsilon = epsilon + param.adapt_eps_change_percentage * (norm2 - epsilon)
+            epsilons = param.adapt_eps_tol_out * epsilon  # Update stopping epsilon
+            eps_it = it
+            print('Adaptive epsilon is updated to ' + str(epsilon))
+
+            # # Old version, the two cases can be merged into one case
+            # if norm2 < param.adapt_eps_tol_in * epsilon:                              # Current l2 ball over-estimated
+            #     epsilon = norm2 + (1 - param.adapt_eps_change_percentage) * (epsilon - norm2)
+            #     epsilons = param.adapt_eps_tol_out * epsilon                          # Update stopping epsilon
+            #     eps_over += 1
+            #     eps_it = it
+            #     print('Epsilon under-estimate, update to ' + str(epsilon))
+            # elif norm2 > param.adapt_eps_tol_out * epsilon:                           # Current l2 ball under-estimated
+            #     epsilon = epsilon + param.adapt_eps_change_percentage * (norm2 - epsilon)
+            #     epsilons = param.adapt_eps_tol_out * epsilon                          # Update stopping epsilon
+            #     eps_under += 1
+            #     eps_it = it
+            #     print('Epsilon over-estimate, update to ' + str(epsilon))
 
         # primal gradient update #
         g1 = np.zeros(np.shape(xsol))
@@ -348,9 +356,9 @@ def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilon
     l2normIter = l2normIter[:it+1]
     relerrorIter = relerrorIter[:it+1]
 
-    if adapt_eps:
-        print('Upward L2 ball bound '+str(eps_under)+' times')
-        print('Downward L2 ball bound '+str(eps_over)+' times')
+    # if adapt_eps:
+    #     print('Upward L2 ball bound '+str(eps_under)+' times')
+    #     print('Downward L2 ball bound '+str(eps_over)+' times')
 
     return xsol, l1normIter, l2normIter, relerrorIter
 
@@ -413,7 +421,7 @@ def forward_backward_primal_dual_fouRed(y, d12, FIpsf, FIpsf_t, S, SARA, epsilon
     u1 = np.zeros((P, Nx, Ny))
     norm1 = np.zeros(P)
 
-    v2 = np.zeros((K, 1))  # initialization of L2 dual variable
+    v2 = np.zeros((K, 1)).astype('complex')  # initialization of L2 dual variable
 
     # initial variables in the primal gradient step
     g1 = np.zeros_like(xsol)
@@ -443,8 +451,6 @@ def forward_backward_primal_dual_fouRed(y, d12, FIpsf, FIpsf_t, S, SARA, epsilon
     eps_it = 0
     reweight_step_count = 0
     reweight_last_step_iter = 0
-    eps_over = 0
-    eps_under = 0
     l1normIter = np.zeros(param.max_iter)
     l2normIter = np.zeros(param.max_iter)
     relerrorIter = np.zeros(param.max_iter)
@@ -502,19 +508,13 @@ def forward_backward_primal_dual_fouRed(y, d12, FIpsf, FIpsf_t, S, SARA, epsilon
 
         # Adjust the l2 bound #
         if adapt_eps and it + 1 >= param.adapt_eps_begin and rel_error < param.adapt_eps_rel_obj \
-                and it + 1 >= eps_it + param.adapt_eps_step:
-            if norm2 < param.adapt_eps_tol_in * epsilon:  # Current l2 ball over-estimated
-                epsilon = norm2 + (1 - param.adapt_eps_change_percentage) * (epsilon - norm2)
-                epsilons = param.adapt_eps_tol_out * epsilon  # Update stopping epsilon
-                eps_over += 1
-                eps_it = it
-                print('Epsilon under-estimate, update to ' + str(epsilon))
-            elif norm2 > param.adapt_eps_tol_out * epsilon:  # Current l2 ball under-estimated
-                epsilon = epsilon + param.adapt_eps_change_percentage * (norm2 - epsilon)
-                epsilons = param.adapt_eps_tol_out * epsilon  # Update stopping epsilon
-                eps_under += 1
-                eps_it = it
-                print('Epsilon over-estimate, update to ' + str(epsilon))
+                and it + 1 >= eps_it + param.adapt_eps_step\
+                and (norm2 < param.adapt_eps_tol_in * epsilon or norm2 > param.adapt_eps_tol_out * epsilon):
+            # epsilon = epsilon + c * (norm2 - epsilon)
+            epsilon = epsilon + param.adapt_eps_change_percentage * (norm2 - epsilon)
+            epsilons = param.adapt_eps_tol_out * epsilon  # Update stopping epsilon
+            eps_it = it
+            print('Adaptive epsilon is updated to ' + str(epsilon))
 
         # primal gradient update #
         g1 = np.zeros(np.shape(xsol))
@@ -568,10 +568,6 @@ def forward_backward_primal_dual_fouRed(y, d12, FIpsf, FIpsf_t, S, SARA, epsilon
     l2normIter = l2normIter[:it + 1]
     relerrorIter = relerrorIter[:it + 1]
 
-    if adapt_eps:
-        print('Upward L2 ball bound ' + str(eps_under) + ' times')
-        print('Downward L2 ball bound ' + str(eps_over) + ' times')
-
     return xsol, l1normIter, l2normIter, relerrorIter
         
             
@@ -595,10 +591,9 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
     :return: recovered image, real array of size [L, Nx, Ny]
 
     :TODO preconditioning
-    :TODO adaptive epsilon
     """
 
-    K, L = np.shape(y)
+    L, K = np.shape(y)
     P = HyperSARA.lenbasis
     No = np.shape(mask_G)[1]        # total size of the oversampling
 
@@ -632,12 +627,12 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
 
     v0 = np.zeros((L, N))                           # initialization of nuclear norm dual variable
     v1 = np.zeros((P, L, N))                           # initialization of L21 dual variable
-    # vy1 = np.copy(v1)
     vy1 = np.zeros((P, L, N))
+    norm21 = np.zeros(P)
 
-    v2 = np.zeros((L, K))                           # initialization of L2 dual variable
-    r2 = np.zeros((L, K))
-    vy2 = np.zeros((L, K))
+    v2 = np.zeros((L, K)).astype('complex')                           # initialization of L2 dual variable
+    r2 = np.zeros((L, K)).astype('complex')
+    vy2 = np.zeros((L, K)).astype('complex')
 
     # initial variables in the primal gradient step
     g0 = np.zeros((L, Nx, Ny))
@@ -671,10 +666,11 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
     lambda2 = param.lambda2
     lambda3 = param.lambda3
 
+    eps_it = 0
     reweight_step_count = 0
     reweight_last_step_iter = 0
     nuclearnormIter = np.zeros(param.max_iter)
-    l21normIter = np.zeros((param.max_iter, P))
+    l21normIter = np.zeros(param.max_iter)
     l2normIter = np.zeros(param.max_iter)
     relerrorIter = np.zeros(param.max_iter)
 
@@ -698,8 +694,7 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
 
         # Nuclear norm dual variable update #
         prev_xsol_mat = prev_xsol.reshape((L, N))
-        tmp, s0 = nuclear_norm(v0.T + prev_xsol_mat, kappa0 * weights0)
-        nuclearnormIter[it] = np.abs(s0).sum()            # nuclear norm (l1-norm of the diagonal)
+        tmp, s0 = nuclear_norm(v0 + prev_xsol_mat, kappa0 * weights0)
         v0 = v0 + lambda1 * (prev_xsol_mat - tmp)
         g0 = np.reshape(v0, (L, Nx, Ny))
 
@@ -707,7 +702,7 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
         # Update for all bases, parallelable #
         r1 = HyperSARA.Psit3(prev_xsol)         # r1 of size [P, L, N]
         for k in np.arange(P):
-            vy1[k], l21normIter[it, k] = l21_norm(v1[k] + r1[k], kappa1 * weights1[k], axis=0)   # ps: l2-norm on the columns
+            vy1[k], norm21[k] = l21_norm(v1[k] + r1[k], kappa1 * weights1[k], axis=0)
         v1 = v1 + lambda2 * (r1 - vy1)
         g1 = sigma1 * HyperSARA.Psi3(v1)
 
@@ -718,15 +713,28 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
             ns = ns[mask_G[l]]
 
             r2[l] = G[l].dot(ns).flatten()
-            vy2[l] = v2[l] + r2[l] - y[l] - proj_sc(v2[l] + r2[l] - y[l], epsilon)  # ! should be row vectors
+            vy2[l] = v2[l] + r2[l] - y[l] - proj_sc(v2[l] + r2[l] - y[l], epsilon[l])  # ! should be row vectors
             v2[l] = v2[l] + lambda3 * (vy2[l] - v2[l])
-            u2.append(Gt[l].dot(v2[l, np.newaxis]))
+            u2.append(Gt[l].dot(v2[l][:, np.newaxis]))
 
         if np.abs(y).sum() == 0:
             u2 = []
             r2[:] = 0
 
-        norm2 = LA.norm(r2 - y)             # norm of residual
+        residualCheck = LA.norm(r2 - y, axis=1)
+        residualCheck_norm = LA.norm(residualCheck)
+        epsilon_norm = LA.norm(epsilon)
+
+        # Adjust the l2 bound #
+        if adapt_eps and it + 1 >= param.adapt_eps_begin and rel_error < param.adapt_eps_rel_obj \
+                and it + 1 >= eps_it + param.adapt_eps_step:
+            ind_check = residualCheck < param.adapt_eps_tol_in * epsilon \
+                        or residualCheck > param.adapt_eps_tol_out * epsilon
+            if len(ind_check) > 0:
+                epsilon[ind_check] = epsilon[ind_check] + param.adapt_eps_change_percentage * (residualCheck[ind_check] - epsilon[ind_check])
+                epsilons[ind_check] = param.adapt_eps_tol_out * epsilon[ind_check]  # Update stopping epsilon
+                eps_it += 1
+                print('Adaptive epsilon is updated to ' + str(epsilon))
 
         # primal gradient update #
         for l in np.arange(L):
@@ -734,19 +742,22 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
             uu[mask_G[l]] = u2[l]
             g2[l] = np.real(At(sigma2 * uu))
 
-        l2normIter[it] = norm2
+        nuclearnormIter[it] = np.abs(s0).sum()  # nuclear norm (l1-norm of the diagonal)
+        l21normIter[it] = norm21.sum()
+        l2normIter[it] = residualCheck_norm
         relerrorIter[it] = rel_error
 
         print('Iteration: ' + str(it+1))
+        print('Epsilon: ' + str(epsilon))
         print('Nuclear norm: ' + str(nuclearnormIter[it]))
         print('L21 norm: ' + str(l21normIter[it]))
-        print('Residual: ' + str(norm2))
+        print('Norm of residuals: ' + str(residualCheck))
         print('Relative error: ' + str(rel_error))
 
         # weight update #
         if (param.use_reweight_steps and reweight_step_count < param.reweight_times
             and it + 1 - param.reweight_begin == param.reweight_step * reweight_step_count) or \
-                (param.use_reweight_eps and norm2 <= epsilons
+                (param.use_reweight_eps and residualCheck_norm <= LA.norm(epsilons)
                  and param.reweight_min_steps_rel_obj < it - reweight_last_step_iter
                  and rel_error < param.reweight_rel_obj):
             # Update for nuclear-norm weights #
@@ -767,8 +778,8 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
             print('Reweighted scheme number: '+str(reweight_step_count))
 
         # global stopping criteria #
-        if rel_error < param.reweight_rel_obj and ((param.global_stop_bound and (norm2 <= epsilon))
-                                                   or (not param.global_stop_bound and norm2 <= epsilon)):
+        if rel_error < param.rel_obj and (residualCheck_norm <= param.adapt_eps_tol_out * epsilon_norm) and (
+                residualCheck_norm >= param.adapt_eps_tol_in * epsilon_norm):
             break
 
     xsol[xsol <= 0] = 0
@@ -776,4 +787,4 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
     l2normIter = l2normIter[:it+1]
     relerrorIter = relerrorIter[:it+1]
 
-    return xsol, l21normIter, l2normIter, relerrorIter
+    return xsol, nuclearnormIter, l21normIter, l2normIter, relerrorIter

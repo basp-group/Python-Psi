@@ -22,7 +22,7 @@ gen_uv = True
 natWeight = True
 
 # Non-Negative Least Squares initialization #
-nnls_init = False
+nnls_init = True
 
 c = 60              # Number of bands
 unds = 4
@@ -38,6 +38,8 @@ N = imsize[0] * imsize[1]
 input_SNR = 40
 
 x0, X0 = generate_cube(im, f, emission=True)            # size: x0[L, Nx, Ny], X0[L, N]
+
+fits.writeto('x0.fits', x0, overwrite=True)
 
 f = f[::unds]
 x0 = x0[::unds]
@@ -68,6 +70,28 @@ y = []
 yn = []
 epsilon = []
 epsilons = []
+nu2_ch = np.zeros(c//unds)
+
+if nnls_init:
+    nnlsparam = optparam(max_iter=200, rel_obj=1.e-6)  # Initialization parameters control
+    print('Initialization using Non-Negative Least Squares')
+else:
+    # l2 ball bound parameter #
+    """
+                        Example for different settings
+        l2_ball_definition='value', stopping_criterion='l2-ball-percentage', stop=1.01 
+        l2_ball_definition='sigma', stopping_criterion='sigma', bound=2., stop=2. 
+        l2_ball_definition='chi-percentile', stopping_criterion='chi-percentile', bound=0.99, stop=0.999 
+    """
+    l2ball = l2param(l2_ball_definition='sigma', stopping_criterion='sigma', bound=2, stop=2)
+
+# optimization parameters control #
+fbparam = optparam(nu0=1.0, nu1=1.0, gamma0=1., gamma=1.e-2, max_iter=500, rel_obj=1.e-6,
+                   use_reweight_steps=True, use_reweight_eps=False, reweight_begin=300, reweight_step=50,
+                   reweight_times=4,
+                   reweight_alpha=0.01, reweight_alpha_ff=0.5, reweight_rel_obj=1.e-6,
+                   adapt_eps=nnls_init, adapt_eps_begin=100, adapt_eps_rel_obj=1.e-3,
+                   mask_psf=False, precond=False)
 
 for i in np.arange(c//unds):
     u = f[i]/f[0] * uw
@@ -113,17 +137,20 @@ for i in np.arange(c//unds):
             tmp_yn = nW.dot(tmp_yn)
 
     # l2 ball bound control, very important for the optimization with constraint formulation #
-    """
-                        Example for different settings
-        l2_ball_definition='value', stopping_criterion='l2-ball-percentage', stop=1.01 
-        l2_ball_definition='sigma', stopping_criterion='sigma', bound=2., stop=2. 
-        l2_ball_definition='chi-percentile', stopping_criterion='chi-percentile', bound=0.99, stop=0.999 
-    """
-    l2ball = l2param(l2_ball_definition='sigma', stopping_criterion='sigma', bound=2, stop=2)
-    if natWeight:
-        tmp_epsilon, tmp_epsilons = util_gen_l2_bounds(yn, 1.0, l2ball)
+    if nnls_init:
+        Phim = lambda x: operatorPhi(x, tmp_Gm, A, tmp_mask_G)
+        Phim_t = lambda x: operatorPhit(x, tmp_Gmt, At, Kd, tmp_mask_G)
+        nu2_ch[i] = pow_method(Phim, Phim_t, imsize, 1e-6, 200, verbose=True)
+        nnlsparam.nu2 = nu2_ch[i]
+        _, tmp_epsilon = fb_nnls(tmp_yn, Phim, Phim_t, nnlsparam, FISTA=True)
+        tmp_epsilons = fbparam.adapt_eps_tol_out * tmp_epsilon
+        print('Channel ' + str(i) + ': estimated epsilon via NNLS: ' + str(tmp_epsilon))
     else:
-        tmp_epsilon, tmp_epsilons = util_gen_l2_bounds(yn, sigma_noise, l2ball)
+        if natWeight:
+            tmp_epsilon, tmp_epsilons = util_gen_l2_bounds(tmp_yn, 1.0, l2ball)
+        else:
+            tmp_epsilon, tmp_epsilons = util_gen_l2_bounds(tmp_yn, sigma_noise, l2ball)
+        print('Channel ' + str(i) + ': estimated epsilon via NNLS: ' + str(tmp_epsilon))
 
     G.append(tmp_G)
     Gt.append(tmp_Gt)
@@ -140,9 +167,8 @@ yn = np.array(yn)
 mask_G = np.array(mask_G)
 epsilon = np.array(epsilon)
 epsilons = np.array(epsilons)
+print('epsilon=', epsilon)
 
-Phi3 = lambda x: operatorPhi3(x, G, A)  # measurement operator: Phi = G * A
-Phi_t3 = lambda x: operatorPhit3(x, Gt, At)
 Phim3 = lambda x: operatorPhi3(x, Gm, A, mask_G)  # masked measurement operator: Phim = Gm * A
 Phim_t3 = lambda x: operatorPhit3(x, Gmt, At, Kd, mask_G)
 
@@ -152,28 +178,12 @@ wlt_basis = ['db1', 'db2', 'db3', 'db4', 'db5', 'db6', 'db7', 'db8',
 nlevel = 3              # wavelet decomposition level
 hypersara = hyperSARA(wlt_basis, nlevel, imsize[0], imsize[1], c//unds)
 
-# optimization parameters control #
 nu2 = pow_method(Phim3, Phim_t3, (c//unds, imsize[0], imsize[1]), 1e-6, 200, verbose=True)             # Spectral radius of the measurement operator
 print('nu2='+str(nu2))
-fbparam = optparam(nu0=1.0, nu1=1.0, nu2=nu2, gamma0=1., gamma=1.e-3, max_iter=500, rel_obj=1.e-6,
-                   use_reweight_steps=True, use_reweight_eps=False, reweight_begin=300, reweight_step=50,
-                   reweight_times=4,
-                   reweight_alpha=0.01, reweight_alpha_ff=0.5, reweight_rel_obj=1.e-6,
-                   adapt_eps=nnls_init, adapt_eps_begin=100, adapt_eps_rel_obj=1.e-3,
-                   mask_psf=False, precond=False)
-
-# Initialization using NNLS #
-# :Todo
-if nnls_init:
-    nnlsparam = optparam(nu2=nu2, max_iter=200, rel_obj=1.e-6)                # Initialization parameters control
-    print('Initialization using Non-Negative Least Squares')
-    fbparam.initsol, epsilon = fb_nnls(yn, Phim3, Phim_t3, nnlsparam, FISTA=True)
-    print('Initialization: '+str(LA.norm(fbparam.initsol - im)/LA.norm(im)))
-    print('Estimated epsilon via NNLS: '+str(epsilon))
-    epsilons = fbparam.adapt_eps_tol_out*epsilon
+fbparam.nu2 = nu2
 
 # run wide-band primal-dual algo #
-imrec, l1normIter, l2normIter, relerrorIter = \
+imrec, nuclearnormIter, l21normIter, l2normIter, relerrorIter = \
     wide_band_primal_dual(yn, A, At, Gm, Gmt, mask_G, hypersara, epsilon, epsilons, fbparam)
 
 snr_res = 20 * np.log10(LA.norm(x0)/LA.norm(imrec - x0))
@@ -182,8 +192,12 @@ fits.writeto('imrec.fits', imrec, overwrite=True)
 
 # Results #
 plt.figure()
-plt.plot(np.arange(np.size(l1normIter))+1, l1normIter)
-plt.title('Evolution of l1 norm')
+plt.plot(np.arange(np.size(nuclearnormIter))+1, nuclearnormIter)
+plt.title('Evolution of nuclear norm')
+
+plt.figure()
+plt.plot(np.arange(np.size(l21normIter))+1, l21normIter)
+plt.title('Evolution of l21 norm')
 
 plt.figure()
 plt.plot(np.arange(np.size(l2normIter))+1, l2normIter)
@@ -194,4 +208,3 @@ plt.plot(np.arange(np.size(relerrorIter))+1, relerrorIter)
 plt.title('Evolution of relative error')
 
 pylab.show()
-
