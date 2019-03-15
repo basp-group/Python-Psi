@@ -26,17 +26,17 @@ maskKernel = False  # economic G matrix, recommend to set True
 nnls_init = False
 
 # Preconditioning #
-precond = False
+precond = True
 
 # image loading #
 if get_image:
-    im = fits.getdata('data/M31_256.fits')           # reference image
+    im = fits.getdata('data/M31_64.fits')           # reference image
     im = im.squeeze()
     imsize = im.shape                           # image size
 else:
     imsize = (100, 100)
 N = imsize[0] * imsize[1]
-visibSize = 10 * N
+visibSize = 50 * N
 input_SNR = 20
 
 # simulated sampling control #
