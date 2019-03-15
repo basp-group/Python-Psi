@@ -92,3 +92,30 @@ def l21_norm(alpha, th, mode='soft', axis=0):
         # !Att: multiplication based on array broadcasting
         alpha_l21[ind] = np.multiply(l2norm_th[ind][:, np.newaxis] / l2norm[ind][:, np.newaxis], alpha[ind])
     return alpha_l21, l2norm_th.sum()
+
+
+# Elliptical projection #
+def proj_ellipse(y, alpha, pU, z0, epsilon, max_iter, min_iter, tol):
+    """
+    Elliptical projection solver
+
+    :param y: data, complex column vector [M]
+    :param alpha: coefficients to be processed, complex column vector [M]
+    :param pU: preconditioning matrix, column vector [M]
+    :param z0: initial guess
+    :param epsilon: l2-ball epsilon
+    :param max_iter: max iteration
+    :param min_iter: min iteration
+    :param tol: error tolerance, stopping criterion
+    :return: coefficients after projection, column vector [M]
+    """
+    mu = 1. / (pU.max()**2)
+    rel_err = 1.
+    it = 0
+    while (rel_err > tol and it < max_iter) or it < min_iter:
+        grad = pU * (z0 - alpha)
+        z = y + proj_sc(z0 - mu * grad - y, epsilon)
+        rel_err = LA.norm(z - z0) / LA.norm(z)
+        z0 = z
+        it += 1
+    return z

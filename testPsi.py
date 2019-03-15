@@ -20,9 +20,13 @@ from pynufft.nufft import NUFFT_cpu
 get_image = True
 gen_uv = True
 natWeight = True
+maskKernel = True  # economic G matrix, recommend to set True
 
 # Non-Negative Least Squares initialization #
 nnls_init = False
+
+# Preconditioning #
+precond = False
 
 # image loading #
 if get_image:
@@ -52,6 +56,12 @@ st = NUFFT_cpu()
 st.plan(uv, imsize, Kd, Jd)
 
 Dr = st.sn          # scaling matrix
+
+
+if precond:
+    aW = util_gen_preconditioning_matrix(u, v, Kd)
+else:
+    aW = None
 
 # definition of some operators #
 # Direct operator: A = F * Z * Dr
@@ -104,23 +114,11 @@ wlt_basis = ['db1', 'db2', 'db3', 'db4', 'db5', 'db6', 'db7', 'db8',
 nlevel = 2              # wavelet decomposition level
 sara = SARA(wlt_basis, nlevel, imsize[0], imsize[1])
 
-# l2 ball bound control, very important for the optimization with constraint formulation #
-"""
-                    Example for different settings
-    l2_ball_definition='value', stopping_criterion='l2-ball-percentage', stop=1.01 
-    l2_ball_definition='sigma', stopping_criterion='sigma', bound=2., stop=2. 
-    l2_ball_definition='chi-percentile', stopping_criterion='chi-percentile', bound=0.99, stop=0.999 
-"""
-if not nnls_init:
-    l2ball = l2param(l2_ball_definition='sigma', stopping_criterion='sigma', bound=2, stop=2)
-    if natWeight:
-        epsilon, epsilons = util_gen_l2_bounds(yn, 1.0, l2ball)
-    else:
-        epsilon, epsilons = util_gen_l2_bounds(yn, sigma_noise, l2ball)
-    print('epsilon='+str(epsilon))
-
 # optimization parameters control #
-nu2 = pow_method(Phim, Phim_t, imsize, 1e-6, 200)             # Spectral radius of the measurement operator
+if maskKernel:
+    nu2 = pow_method(Phim, Phim_t, imsize, 1e-6, 200)             # Spectral radius of the measurement operator
+else:
+    nu2 = pow_method(Phi, Phi_t, imsize, 1e-6, 200)  # Spectral radius of the measurement operator
 print('nu2='+str(nu2))
 fbparam = optparam(nu1=1.0, nu2=nu2, gamma=1.e-3, tau=0.49, max_iter=500, rel_obj=1.e-6,
                    use_reweight_steps=True, use_reweight_eps=False, reweight_begin=300, reweight_step=50,
@@ -138,17 +136,43 @@ dirty = np.real(Phi_t(yn)) / np.abs(PSF).max()
 # run FB primal-dual algo #
 print('Sparse recovery using Forward-Backward Primal-Dual')
 
-# Initialization using NNLS #
+# l2 ball bound control, very important for the optimization with constraint formulation #
 if nnls_init:
+    # Initialization using NNLS #
     nnlsparam = optparam(nu2=nu2, max_iter=200, rel_obj=1.e-6)                # Initialization parameters control
     print('Initialization using Non-Negative Least Squares')
-    fbparam.initsol, epsilon = fb_nnls(yn, Phim, Phim_t, nnlsparam, FISTA=True)
+    if maskKernel:
+        fbparam.initsol, epsilon = fb_nnls(yn, Phim, Phim_t, nnlsparam, FISTA=True)
+    else:
+        fbparam.initsol, epsilon = fb_nnls(yn, Phi, Phi_t, nnlsparam, FISTA=True)
     print('Initialization: '+str(LA.norm(fbparam.initsol - im)/LA.norm(im)))
     print('Estimated epsilon via NNLS: '+str(epsilon))
     epsilons = fbparam.adapt_eps_tol_out*epsilon
-    
+else:
+    """
+                        Example for different settings
+        l2_ball_definition='value', stopping_criterion='l2-ball-percentage', stop=1.01 
+        l2_ball_definition='sigma', stopping_criterion='sigma', bound=2., stop=2. 
+        l2_ball_definition='chi-percentile', stopping_criterion='chi-percentile', bound=0.99, stop=0.999 
+    """
+    l2ball = l2param(l2_ball_definition='sigma', stopping_criterion='sigma', bound=2, stop=2)
+    if natWeight:
+        epsilon, epsilons = util_gen_l2_bounds(yn, 1.0, l2ball)
+    else:
+        epsilon, epsilons = util_gen_l2_bounds(yn, sigma_noise, l2ball)
+    print('epsilon='+str(epsilon))
+
+if precond:
+    if maskKernel:
+        fbparam.nu2 = pow_method(lambda x: operatorPhi(x, aW.dot(Gm), A, mask_G),
+                                 lambda x: operatorPhit(x, aW.dot(Gmt), At, Kd, mask_G), imsize, 1e-6, 200)
+    else:
+        fbparam.nu2 = pow_method(lambda x: operatorPhi(x, aW.dot(G), A),
+                                 lambda x: operatorPhit(x, aW.dot(Gt), At), imsize, 1e-6, 200)
+    fbparam.precond = True
+
 imrec, l1normIter, l2normIter, relerrorIter = \
-    forward_backward_primal_dual(yn, A, At, Gm, Gmt, mask_G, sara, epsilon, epsilons, fbparam)
+    forward_backward_primal_dual(yn, A, At, Gm, Gmt, mask_G, sara, epsilon, epsilons, fbparam, precondMat=aW)
 
 print('Relative error of the reconstruction: '+str(LA.norm(imrec - im)/LA.norm(im)))
 

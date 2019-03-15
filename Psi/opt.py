@@ -26,7 +26,7 @@ class optparam(object):
                  adapt_eps=False, adapt_eps_begin=50, adapt_eps_rel_obj=1.e-3, adapt_eps_step=100,
                  adapt_eps_tol_in=0.99, adapt_eps_tol_out=1.01, adapt_eps_change_percentage=0.5*(np.sqrt(5)-1),
                  mask_psf=False,
-                 precond=False):
+                 precond=False, elipse_proj_max_iter=2000, elipse_proj_min_iter=1, elipse_proj_rel_obj=1.e-8):
         
         self.positivity = positivity
         self.nu0 = nu0  # bound for the nuclear-norm term, for wide-band imaging
@@ -72,7 +72,10 @@ class optparam(object):
 
         self.mask_psf = mask_psf
 
-        self.precond = precond
+        self.precond = precond  # preconditioning flag
+        self.elipse_proj_max_iter = elipse_proj_max_iter    # max iteration for elliptical projection
+        self.elipse_proj_min_iter = elipse_proj_min_iter    # min iteration for elliptical projection
+        self.elipse_proj_rel_obj = elipse_proj_rel_obj      # objective reletive error for elliptical projection
 
 
 # Solve Non-Negative Least Squares using Forward-Backward #
@@ -270,7 +273,14 @@ def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilon
         ns = ns[mask_G]
         
         r2 = G.dot(ns)
-        vy2 = v2 + r2 - y - proj_sc(v2 + r2 - y, epsilon)
+        if precond:
+            if it == 0:
+                proj = np.zeros((K, 1)).astype('complex')               # proj initialization
+            proj = proj_ellipse(y, v2 + r2, precondMat, proj, epsilon,
+                                param.elipse_proj_max_iter, param.elipse_proj_min_iter, param.elipse_proj_rel_obj)
+            vy2 = v2 + r2 - y - precondMat * proj
+        else:
+            vy2 = v2 + r2 - y - proj_sc(v2 + r2 - y, epsilon)
         v2 = v2 + lambda2 * (vy2 - v2)
         u2 = Gt.dot(v2)
                 

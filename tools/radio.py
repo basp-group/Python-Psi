@@ -495,4 +495,34 @@ def generate_cube(im, f, emission=True):
     return x0, X0
 
 
+def util_gen_preconditioning_matrix(u, v, imsize, uniform_weight_sub_pixels=1):
+    Nox = imsize[0]
+    Noy = imsize[1]
+    aWw = np.ones((np.size(u), 1))
 
+    uedges = np.linspace(-np.pi, np.pi, uniform_weight_sub_pixels * Nox)
+    vedges = np.linspace(-np.pi, np.pi, uniform_weight_sub_pixels * Noy)
+
+    h, _, _, = np.histogram2d(u, v, [uedges, vedges])
+    histu = np.sum(h, axis=1)   # histogram of u
+    histv = np.sum(h, axis=0)   # # histogram of v
+    argu = np.argsort(u)        # indices of ascending u
+    argv = np.argsort(v)        # indices of ascending v
+
+    indu = 0
+    for nbu in histu:
+        indu1 = indu + nbu
+        setu = set(argu[indu:indu1])    # indices of current bin of u
+        indv = 0
+        indu = indu1
+        if not setu:        # empty set
+            continue
+        for nbv in histv:
+            indv1 = indv + nbv
+            setv = set(argv[indv:indv1])    # indices of current bin of v
+            ind = list(setu.intersection(setv))     # common index in both bins of u and v
+            indv = indv1
+            if not setv:        # empty set
+                continue
+            aWw[ind] = len(ind)
+    return 1./aWw
