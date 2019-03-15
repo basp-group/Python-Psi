@@ -14,7 +14,7 @@ class sparam(object):
     """
     Simulation parameters
     """
-    def __init__(self, N=256, p=0.5, hole_number=1000, hole_prob=0.1, hole_size=np.pi/60, 
+    def __init__(self, N=256, p=0.5, hole_number=100, hole_prob=0.1, hole_size=np.pi/60,
                  fpartition=np.array([-np.pi, np.pi]), sigma=np.pi/4, sigma_holes=np.pi/3):
         self.N = N  # number of pixels
         self.p = p  # ratio of visibility to number of pixels
@@ -127,26 +127,26 @@ def util_gen_sampling_pattern(pattern, holes, sprm):
     while len(u) < Nm:
         Nmextra = int(Nm - len(u))
         if pattern == 'gaussian':
-            us = sigma_m * np.random.randn(2 * Nmextra)
-            vs = sigma_m * np.random.randn(2 * Nmextra)
+            us = sigma_m * np.random.randn(int(1.1 * Nmextra))
+            vs = sigma_m * np.random.randn(int(1.1 * Nmextra))
         elif pattern == 'uniform':
-            us = -np.pi + 2 * np.pi * np.random.rand(2 * Nmextra)
-            vs = -np.pi + 2 * np.pi * np.random.rand(2 * Nmextra)
+            us = -np.pi + 2 * np.pi * np.random.rand(int(1.1 * Nmextra))
+            vs = -np.pi + 2 * np.pi * np.random.rand(int(1.1 * Nmextra))
         elif pattern == 'geometric':
-            us = np.random.geometric(sigma_m, 2 * Nmextra)
-            vs = np.random.geometric(sigma_m, 2 * Nmextra)
+            us = np.random.geometric(sigma_m, int(1.1 * Nmextra))
+            vs = np.random.geometric(sigma_m, int(1.1 * Nmextra))
         # discard points outside (-pi,pi)x(-pi,pi)
         sf1 = np.where((us < np.pi) & (us > -np.pi))[0]
         sf2 = np.where((vs < np.pi) & (vs > -np.pi))[0]
-        sf = np.array(list(set(sf1).intersection(sf2)))
-        
+        sf = list(set(sf1).intersection(sf2))
+
         if holes:
             for k in np.arange(Nh):
                 # discard points inside the holes
-                sf1 = np.where((u < hu[k] + hs) & (u > hu[k] - hs))[0]
-                sf2 = np.where((v < hu[k] + hs) & (v > hu[k] - hs))[0]
-                sfh = np.array(list(set(sf1).intersection(sf2)))
-                sf = np.array(list(set(sf) - set(sfh)))
+                sf1 = np.where((us[sf] < hu[k] + hs) & (us[sf] > hu[k] - hs))[0]
+                sf2 = np.where((vs[sf] < hu[k] + hs) & (vs[sf] > hu[k] - hs))[0]
+                sfh = list(set(sf1).intersection(sf2))
+                sf = list(set(sf) - set(sfh))
 
         sf = sf[:Nmextra]
         if np.size(sf) > 0: 
@@ -500,12 +500,12 @@ def util_gen_preconditioning_matrix(u, v, imsize, uniform_weight_sub_pixels=1):
     Noy = imsize[1]
     aWw = np.ones((np.size(u), 1))
 
-    uedges = np.linspace(-np.pi, np.pi, uniform_weight_sub_pixels * Nox)
-    vedges = np.linspace(-np.pi, np.pi, uniform_weight_sub_pixels * Noy)
+    uedges = np.linspace(-np.pi, np.pi, uniform_weight_sub_pixels * Nox + 1)
+    vedges = np.linspace(-np.pi, np.pi, uniform_weight_sub_pixels * Noy + 1)
 
     h, _, _, = np.histogram2d(u, v, [uedges, vedges])
-    histu = np.sum(h, axis=1)   # histogram of u
-    histv = np.sum(h, axis=0)   # # histogram of v
+    histu = np.sum(h, axis=1).astype('int')   # histogram of u
+    histv = np.sum(h, axis=0).astype('int')   # histogram of v
     argu = np.argsort(u)        # indices of ascending u
     argv = np.argsort(v)        # indices of ascending v
 

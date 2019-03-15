@@ -20,7 +20,7 @@ from pynufft.nufft import NUFFT_cpu
 get_image = True
 gen_uv = True
 natWeight = True
-maskKernel = True  # economic G matrix, recommend to set True
+maskKernel = False  # economic G matrix, recommend to set True
 
 # Non-Negative Least Squares initialization #
 nnls_init = False
@@ -30,13 +30,13 @@ precond = False
 
 # image loading #
 if get_image:
-    im = fits.getdata('data/M31_64.fits')           # reference image
+    im = fits.getdata('data/M31_256.fits')           # reference image
     im = im.squeeze()
     imsize = im.shape                           # image size
 else:
     imsize = (100, 100)
 N = imsize[0] * imsize[1]
-visibSize = 5 * N
+visibSize = 10 * N
 input_SNR = 20
 
 # simulated sampling control #
@@ -120,7 +120,7 @@ if maskKernel:
 else:
     nu2 = pow_method(Phi, Phi_t, imsize, 1e-6, 200)  # Spectral radius of the measurement operator
 print('nu2='+str(nu2))
-fbparam = optparam(nu1=1.0, nu2=nu2, gamma=1.e-3, tau=0.49, max_iter=500, rel_obj=1.e-6,
+fbparam = optparam(nu1=1.0, nu2=nu2, gamma=1.e-3, tau=0.49, max_iter=10, rel_obj=1.e-6,
                    use_reweight_steps=True, use_reweight_eps=False, reweight_begin=300, reweight_step=50,
                    reweight_times=4,
                    reweight_alpha=0.01, reweight_alpha_ff=0.5, reweight_rel_obj=1.e-6,
@@ -132,9 +132,6 @@ dirac2D = np.zeros(imsize)
 dirac2D[imsize[0] // 2, imsize[1] // 2] = 1
 PSF = Phi_t(Phi(dirac2D))
 dirty = np.real(Phi_t(yn)) / np.abs(PSF).max()
-
-# run FB primal-dual algo #
-print('Sparse recovery using Forward-Backward Primal-Dual')
 
 # l2 ball bound control, very important for the optimization with constraint formulation #
 if nnls_init:
@@ -164,17 +161,21 @@ else:
 
 if precond:
     if maskKernel:
-        fbparam.nu2 = pow_method(lambda x: operatorPhi(x, aW.dot(Gm), A, mask_G),
-                                 lambda x: operatorPhit(x, aW.dot(Gmt), At, Kd, mask_G), imsize, 1e-6, 200)
+        fbparam.nu2 = pow_method(lambda x: aW * Phim(x), lambda x: Phim_t(aW * x), imsize, 1e-6, 200)
     else:
-        fbparam.nu2 = pow_method(lambda x: operatorPhi(x, aW.dot(G), A),
-                                 lambda x: operatorPhit(x, aW.dot(Gt), At), imsize, 1e-6, 200)
+        fbparam.nu2 = pow_method(lambda x: aW * Phi(x), lambda x: Phi_t(aW * x), imsize, 1e-6, 200)
     fbparam.precond = True
+    print('Preconditioning active, nu2=' + str(nu2))
+
+# run FB primal-dual algo #
+print('Sparse recovery using Forward-Backward Primal-Dual')
 
 imrec, l1normIter, l2normIter, relerrorIter = \
     forward_backward_primal_dual(yn, A, At, Gm, Gmt, mask_G, sara, epsilon, epsilons, fbparam, precondMat=aW)
 
 print('Relative error of the reconstruction: '+str(LA.norm(imrec - im)/LA.norm(im)))
+snr_res = 20 * np.log10(LA.norm(im)/LA.norm(imrec - im))
+print('Reconstruction snr=', snr_res)
 
 fits.writeto('imrec.fits', imrec, overwrite=True)
 fits.writeto('dirty.fits', dirty, overwrite=True)

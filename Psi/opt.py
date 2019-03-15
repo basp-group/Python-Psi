@@ -276,9 +276,9 @@ def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilon
         if precond:
             if it == 0:
                 proj = np.zeros((K, 1)).astype('complex')               # proj initialization
-            proj = proj_ellipse(y, v2 + r2, precondMat, proj, epsilon,
+            proj = proj_ellipse(y, 1. / precondMat * v2 + r2, precondMat, proj, epsilon,
                                 param.elipse_proj_max_iter, param.elipse_proj_min_iter, param.elipse_proj_rel_obj)
-            vy2 = v2 + r2 - y - precondMat * proj
+            vy2 = v2 + precondMat * (r2 - proj)
         else:
             vy2 = v2 + r2 - y - proj_sc(v2 + r2 - y, epsilon)
         v2 = v2 + lambda2 * (vy2 - v2)
