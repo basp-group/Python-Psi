@@ -84,7 +84,7 @@ def operatorIpsf(x, A, At, H, paddingsize=None, M=None):
     :param M: mask of the values that have no contribution to the convolution
     :return: image convolved with psf
     """
-    tmp = A(x)
+    tmp = A(np.real(x))
     if M is not None:
         tmp = tmp[M, 0]
     tmp1 = H.dot(tmp)
@@ -183,13 +183,13 @@ def fourierReduction(G, Gt, A, At, Nd, redparam):
             dirac2D = np.zeros(Nd)
             dirac2D[Nd[0] // 2, Nd[1] // 2] = 1
             PSF = Ipsf(dirac2D)
-            covariancemat = np.abs(FT2(PSF)).flatten()
+            covariancemat = np.abs(np.real(FT2(PSF)).flatten())     # real part of F * Ipsf
             d = covariancemat.flatten()
         else:
-            covoperator = lambda x: IFT2(Ipsf(FT2(x.reshape(Nd))))  # F * Phi^T * Phi * F^-1
+            covoperator = lambda x: FT2(Ipsf(IFT2(x.reshape(Nd))))  # F * Phi^T * Phi * F^-1
             # As the embeding operator R = \sigma * F * Phi^T, when applied to the noise n,
             # it is necessary to compute the covariance of R * R^T so as to study the statistic of the new noise Rn
-            covariancemat = np.abs(guessmatrix(covoperator, N, N, diagonly=True))
+            covariancemat = np.abs(np.real(guessmatrix(covoperator, N, N, diagonly=True)))
             d = covariancemat.diagonal()
         fits.writeto(redparam.covmatfilename, d, overwrite=True)
     # Thresholding of singular values
@@ -210,7 +210,8 @@ def fourierReduction(G, Gt, A, At, Nd, redparam):
             noise = redparam.sigma_nosie / np.sqrt(2) * (nb_vis + 1j * nb_vis)
         else:
             noise = redparam.noise
-        th = threshold * FT2(At(Gt.dot(noise))) / im2
+        rn = FT2(At(Gt.dot(noise)))
+        th = threshold * np.std(rn) / im2
         ind = d < th
         d1[ind] = 0
         print('The threshold is ' + str(th))

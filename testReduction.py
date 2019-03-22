@@ -133,7 +133,7 @@ if not nnls_init:
 nu2 = pow_method(lambda x: operatorRPhi(x, Ipsf, d12, S, Nd), lambda x: operatorRPhit(x, Ipsf, d12, S, Nd), Nd, 1e-6,
                  200)  # Spectral radius of the measurement operator
 print('nu2='+str(nu2))
-fbparam = optparam(nu1=1.0, nu2=nu2, gamma=1.e-3, tau=0.49, max_iter=500, rel_obj=1.e-6,
+fbparam = optparam(nu1=1.0, nu2=nu2, gamma=1.e-3, tau=0.49, max_iter=20, rel_obj=1.e-6,
                    use_reweight_steps=True, use_reweight_eps=False, reweight_begin=300, reweight_step=50,
                    reweight_times=4,
                    reweight_alpha=0.01, reweight_alpha_ff=0.5, reweight_rel_obj=1.e-6,
@@ -162,6 +162,9 @@ if nnls_init:
 imrec, l1normIter, l2normIter, relerrorIter = \
     forward_backward_primal_dual_fouRed(ry, d12, FIpsf, FIpsf_t, S, sara, epsilon, epsilons, fbparam)
 
+print('Relative error of the reconstruction: '+str(LA.norm(imrec - im)/LA.norm(im)))
+snr_res = 20 * np.log10(LA.norm(im)/LA.norm(imrec - im))
+print('Reconstruction snr=', snr_res)
 
 # results #
 plt.figure()

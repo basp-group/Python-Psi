@@ -26,7 +26,7 @@ maskKernel = False  # economic G matrix, recommend to set True
 nnls_init = False
 
 # Preconditioning #
-precond = True
+precond = False
 
 # image loading #
 if get_image:
@@ -36,7 +36,7 @@ if get_image:
 else:
     imsize = (100, 100)
 N = imsize[0] * imsize[1]
-visibSize = 50 * N
+visibSize = 10 * N
 input_SNR = 20
 
 # simulated sampling control #
@@ -120,7 +120,7 @@ if maskKernel:
 else:
     nu2 = pow_method(Phi, Phi_t, imsize, 1e-6, 200)  # Spectral radius of the measurement operator
 print('nu2='+str(nu2))
-fbparam = optparam(nu1=1.0, nu2=nu2, gamma=1.e-3, tau=0.49, max_iter=10, rel_obj=1.e-6,
+fbparam = optparam(nu1=1.0, nu2=nu2, gamma=1.e-3, tau=0.49, max_iter=20, rel_obj=1.e-6,
                    use_reweight_steps=True, use_reweight_eps=False, reweight_begin=300, reweight_step=50,
                    reweight_times=4,
                    reweight_alpha=0.01, reweight_alpha_ff=0.5, reweight_rel_obj=1.e-6,
@@ -161,9 +161,9 @@ else:
 
 if precond:
     if maskKernel:
-        fbparam.nu2 = pow_method(lambda x: aW * Phim(x), lambda x: Phim_t(aW * x), imsize, 1e-6, 200)
+        fbparam.nu2 = pow_method(lambda x: np.sqrt(aW) * Phim(x), lambda x: Phim_t(np.sqrt(aW) * x), imsize, 1e-6, 200)
     else:
-        fbparam.nu2 = pow_method(lambda x: aW * Phi(x), lambda x: Phi_t(aW * x), imsize, 1e-6, 200)
+        fbparam.nu2 = pow_method(lambda x: np.sqrt(aW) * Phi(x), lambda x: Phi_t(np.sqrt(aW) * x), imsize, 1e-6, 200)
     fbparam.precond = True
     print('Preconditioning active, nu2=' + str(nu2))
 
