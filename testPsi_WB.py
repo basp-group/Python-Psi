@@ -24,6 +24,9 @@ natWeight = True
 # Non-Negative Least Squares initialization #
 nnls_init = True
 
+# Preconditioning #
+precond = True
+
 c = 60              # Number of bands
 unds = 4
 f = np.linspace(1, 2, c)
@@ -61,6 +64,7 @@ Kd = (imsize[0]*osf[0], imsize[1]*osf[1])          # oversampled size for nufft
 uw /= 2
 vw /= 2
 
+aW = []
 G = []
 Gt = []
 Gm = []
@@ -100,6 +104,9 @@ for i in np.arange(c//unds):
 
     st = NUFFT_cpu()
     st.plan(uv, imsize, Kd, Jd)
+
+    if precond:
+        tmp_aW = util_gen_preconditioning_matrix(u, v, Kd)
 
     ########### definition of some operators #############
     # Direct operator: A = F * Z * Dr
@@ -152,6 +159,7 @@ for i in np.arange(c//unds):
             tmp_epsilon, tmp_epsilons = util_gen_l2_bounds(tmp_yn, sigma_noise, l2ball)
         print('Channel ' + str(i) + ': estimated epsilon via NNLS: ' + str(tmp_epsilon))
 
+    aW.append(tmp_aW.flatten())
     G.append(tmp_G)
     Gt.append(tmp_Gt)
     Gm.append(tmp_Gm)
@@ -162,6 +170,10 @@ for i in np.arange(c//unds):
     epsilon.append(tmp_epsilon)
     epsilons.append(tmp_epsilons)
 
+if precond:
+    aW = np.array(aW)       # aW of size [L, M], where L represents band and M represent visibility
+else:
+    aW = None
 y = np.array(y)        # y and yn of size [L, M], where L represents band and M represent visibility
 yn = np.array(yn)
 mask_G = np.array(mask_G)
@@ -178,13 +190,18 @@ wlt_basis = ['db1', 'db2', 'db3', 'db4', 'db5', 'db6', 'db7', 'db8',
 nlevel = 3              # wavelet decomposition level
 hypersara = hyperSARA(wlt_basis, nlevel, imsize[0], imsize[1], c//unds)
 
-nu2 = pow_method(Phim3, Phim_t3, (c//unds, imsize[0], imsize[1]), 1e-6, 200, verbose=True)             # Spectral radius of the measurement operator
-print('nu2='+str(nu2))
+if precond:
+    nu2 = pow_method(lambda x: np.sqrt(aW) * Phim3(x), lambda x: Phim_t3(np.sqrt(aW) * x), (c//unds, imsize[0], imsize[1]), 1e-6, 200, verbose=True)
+    fbparam.precond = True
+    print('Preconditioning active, nu2=' + str(nu2))
+else:
+    nu2 = pow_method(Phim3, Phim_t3, (c//unds, imsize[0], imsize[1]), 1e-6, 200, verbose=True)             # Spectral radius of the measurement operator
+    print('nu2='+str(nu2))
 fbparam.nu2 = nu2
 
 # run wide-band primal-dual algo #
 imrec, nuclearnormIter, l21normIter, l2normIter, relerrorIter = \
-    wide_band_primal_dual(yn, A, At, Gm, Gmt, mask_G, hypersara, epsilon, epsilons, fbparam)
+    wide_band_primal_dual(yn, A, At, Gm, Gmt, mask_G, hypersara, epsilon, epsilons, fbparam, precondMat=aW)
 
 snr_res = 20 * np.log10(LA.norm(x0)/LA.norm(imrec - x0))
 print('Reconstruction snr=', snr_res)

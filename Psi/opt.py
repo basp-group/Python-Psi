@@ -25,7 +25,7 @@ class optparam(object):
                  reweight_min_steps_rel_obj=100, reweight_alpha=0.01, reweight_alpha_ff=0.5, reweight_abs_of_max=1.,
                  adapt_eps=False, adapt_eps_begin=50, adapt_eps_rel_obj=1.e-3, adapt_eps_step=100,
                  adapt_eps_tol_in=0.99, adapt_eps_tol_out=1.01, adapt_eps_change_percentage=0.5*(np.sqrt(5)-1),
-                 mask_psf=False,
+                 mask_image=False,
                  precond=False, elipse_proj_max_iter=2000, elipse_proj_min_iter=1, elipse_proj_rel_obj=1.e-8):
         
         self.positivity = positivity
@@ -70,7 +70,7 @@ class optparam(object):
         self.adapt_eps_change_percentage = adapt_eps_change_percentage
         # the weight of the update w.r.t the l2 norm of the residual data
 
-        self.mask_psf = mask_psf
+        self.mask_image = mask_image
 
         self.precond = precond  # preconditioning flag
         self.elipse_proj_max_iter = elipse_proj_max_iter    # max iteration for elliptical projection
@@ -135,11 +135,11 @@ def fb_nnls(y, A, At, param, FISTA=True):
 
 # Forward Backward Primal Dual method #
 def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilons, param,
-                                 maskPsfMat=None, precondMat=None):
+                                 maskImage=None, precondMat=None):
     """
     min ||Psit x||_1 s.t. ||y - \Phi x||_2 <= epsilons
     
-    :param y: input data, complex vector of size [M]
+    :param y: input data, complex column vector of size [M]
     :param A: function handle, direct operator F * Z * Dr
     :param At: function handle, adjoint operator of A
     :param G: interpolation kernel, the kernel matrix is of size [M,No]
@@ -150,11 +150,9 @@ def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilon
     :param epsilon: global l2 bound
     :param epsilons: stop criterion of the global L2 bound, slightly bigger than epsilon
     :param param: object of optimization parameters, more details to see the class "optparam"
-    :param maskPsfMat: mask for the psf, boolean array of size [Nx, Ny], default is None
-    :param precondMat: preconditioning matrix, real array of size [Nx, Ny], default is None
+    :param maskImage: mask the unphysical points of the image, boolean array of size [Nx, Ny], default is None
+    :param precondMat: preconditioning matrix, real column vector of size [M], default is None
     :return: recovered image, real array of size [Nx, Ny]
-
-    :TODO preconditioning
     """
 
     K = np.size(y)
@@ -179,15 +177,18 @@ def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilon
     else:
         adapt_eps = False
 
-    if hasattr(param, 'mask_psf'):                # mask of psf
-        mask_psf = param.mask_psf
+    if hasattr(param, 'mask_image'):                # mask of psf
+        mask_image = param.mask_image
     else:
-        mask_psf = False
+        mask_image = False
 
     if hasattr(param, 'precond'):                # preconditioning
         precond = param.precond
     else:
         precond = False
+
+    if precond:
+        proj = np.zeros((K, 1)).astype('complex')  # proj initialization
 
     v1 = np.zeros((P, N))                           # initialization of L1 dual variable
     r1 = np.copy(v1)
@@ -235,8 +236,8 @@ def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilon
         
         # primal update #
         ysol = xsol - tau*(omega1 * g1 + omega2 * g2)
-        if mask_psf:                        # mask invalid region of the image
-            ysol = ysol[maskPsfMat]
+        if mask_image:                        # mask invalid region of the image
+            ysol = ysol[maskImage]
         if positivity:
             ysol[ysol <= 0] = 0            # Positivity constraint. Att: min(-param.im0, 0) in the initial Matlab code!
         prev_xsol = np.copy(xsol)
@@ -274,8 +275,6 @@ def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilon
         
         r2 = G.dot(ns)
         if precond:
-            if it == 0:
-                proj = np.zeros((K, 1)).astype('complex')               # proj initialization
             proj = proj_ellipse(y, 1. / precondMat * v2 + r2, precondMat, proj, epsilon,
                                 param.elipse_proj_max_iter, param.elipse_proj_min_iter, param.elipse_proj_rel_obj)
             vy2 = v2 + precondMat * (r2 - proj)
@@ -374,11 +373,11 @@ def forward_backward_primal_dual(y, A, At, G, Gt, mask_G, SARA, epsilon, epsilon
 
 
 def forward_backward_primal_dual_fouRed(y, d12, FIpsf, FIpsf_t, S, SARA, epsilon, epsilons, param,
-                                        maskPsfMat=None, precondMat=None):
+                                        maskImage=None, precondMat=None):
     """
     min ||Psit x||_1 s.t. ||y - \Phi x||_2 <= epsilons
 
-    :param y: input data, complex vector of size [M]
+    :param y: input data, complex column vector of size [M]
     :param d12: inverse of singular values, vector of size [N0], N0 is the dimension after reduction
     :param FIpsf: function handle of F * Ipsf = F * Phi^t * Phi
     :param FIpsf_t: function handle of adjoint FIpsf
@@ -387,11 +386,9 @@ def forward_backward_primal_dual_fouRed(y, d12, FIpsf, FIpsf_t, S, SARA, epsilon
     :param epsilon: global l2 bound
     :param epsilons: stop criterion of the global L2 bound, slightly bigger than epsilon
     :param param: object of optimization parameters, more details to see the class "optparam"
-    :param maskPsfMat: mask for the psf, boolean array of size [Nx, Ny], default is None
-    :param precondMat: preconditioning matrix, real array of size [Nx, Ny], default is None
+    :param maskImage: mask the unphysical points of the image, boolean array of size [Nx, Ny], default is None
+    :param precondMat: preconditioning matrix, real column vector of size [M], default is None
     :return: recovered image, real array of size [Nx, Ny]
-
-    :TODO preconditioning
     """
 
     K = np.size(y)
@@ -415,15 +412,18 @@ def forward_backward_primal_dual_fouRed(y, d12, FIpsf, FIpsf_t, S, SARA, epsilon
     else:
         adapt_eps = False
 
-    if hasattr(param, 'mask_psf'):                # mask of psf
-        mask_psf = param.mask_psf
+    if hasattr(param, 'mask_image'):                # mask of psf
+        mask_image = param.mask_image
     else:
-        mask_psf = False
+        mask_image = False
 
     if hasattr(param, 'precond'):                # preconditioning
         precond = param.precond
     else:
         precond = False
+
+    if precond:
+        proj = np.zeros((K, 1)).astype('complex')  # proj initialization
 
     v1 = np.zeros((P, N))  # initialization of L1 dual variable
     r1 = np.copy(v1)
@@ -469,8 +469,8 @@ def forward_backward_primal_dual_fouRed(y, d12, FIpsf, FIpsf_t, S, SARA, epsilon
 
         # primal update #
         ysol = xsol - tau * (omega1 * g1 + omega2 * g2)
-        if mask_psf:                        # mask invalid region of the image
-            ysol = ysol[maskPsfMat]
+        if mask_image:                        # mask invalid region of the image
+            ysol = ysol[maskImage]
         if positivity:
             ysol[ysol <= 0] = 0  # Positivity constraint. Att: min(-param.im0, 0) in the initial Matlab code!
         prev_xsol = np.copy(xsol)
@@ -506,7 +506,14 @@ def forward_backward_primal_dual_fouRed(y, d12, FIpsf, FIpsf_t, S, SARA, epsilon
         ns = FIpsf(prev_xsol)[S]  # non gridded measurements of current solution
 
         r2 = d12 * ns
-        vy2 = v2 + r2 - y - proj_sc(v2 + r2 - y, epsilon)
+
+        if precond:
+            proj = proj_ellipse(y, 1. / precondMat * v2 + r2, precondMat, proj, epsilon,
+                                param.elipse_proj_max_iter, param.elipse_proj_min_iter, param.elipse_proj_rel_obj)
+            vy2 = v2 + precondMat * (r2 - proj)
+        else:
+            vy2 = v2 + r2 - y - proj_sc(v2 + r2 - y, epsilon)
+
         v2 = v2 + lambda2 * (vy2 - v2)
         u2 = d12 * v2
 
@@ -582,7 +589,8 @@ def forward_backward_primal_dual_fouRed(y, d12, FIpsf, FIpsf_t, S, SARA, epsilon
         
             
 # Wide-band imaging based on primal-dual method #
-def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons, param):
+def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons, param,
+                          maskImage=None, precondMat=None):
     """
     min ||Psit x||_2,1 + ||x||_* s.t. ||y - \Phi x||_2 <= epsilons
 
@@ -598,9 +606,9 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
     :param epsilon: vector of size [L] representing global l2 bound
     :param epsilons: vector of size [L] representing stop criterion of the global L2 bound, slightly bigger than epsilon
     :param param: object of optimization parameters, more details to see the class "optparam"
+    :param maskImage: mask the unphysical points of the image, boolean array of size [L, Nx, Ny], default is None
+    :param precondMat: preconditioning matrix, real array of size [L, M], default is None
     :return: recovered image, real array of size [L, Nx, Ny]
-
-    :TODO preconditioning
     """
 
     L, K = np.shape(y)
@@ -625,15 +633,18 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
     else:
         adapt_eps = False
 
-    if hasattr(param, 'mask_psf'):                # mask of psf
-        mask_psf = param.mask_psf
+    if hasattr(param, 'mask_image'):                # mask of psf
+        mask_image = param.mask_image
     else:
-        mask_psf = False
+        mask_image = False
 
     if hasattr(param, 'precond'):                # preconditioning
         precond = param.precond
     else:
         precond = False
+
+    if precond:
+        proj = np.zeros((L, K)).astype('complex')  # proj initialization
 
     v0 = np.zeros((L, N))                           # initialization of nuclear norm dual variable
     v1 = np.zeros((P, L, N))                           # initialization of L21 dual variable
@@ -688,6 +699,8 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
 
         # primal update #
         ysol = xsol - tau*(omega0 * g0 + omega1 * g1 + omega2 * g2)
+        if mask_image:                        # mask invalid region of the image
+            ysol = ysol[maskImage]
         if positivity:
             ysol[ysol <= 0] = 0           # Positivity constraint. Att: min(-param.im0, 0) in the initial Matlab code!
         prev_xsol = np.copy(xsol)
@@ -723,7 +736,12 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
             ns = ns[mask_G[l]]
 
             r2[l] = G[l].dot(ns).flatten()
-            vy2[l] = v2[l] + r2[l] - y[l] - proj_sc(v2[l] + r2[l] - y[l], epsilon[l])  # ! should be row vectors
+            if precond:
+                proj[l] = proj_ellipse(y[l], 1. / precondMat[l] * v2[l] + r2[l], precondMat[l], proj[l], epsilon[l],
+                                    param.elipse_proj_max_iter, param.elipse_proj_min_iter, param.elipse_proj_rel_obj)
+                vy2[l] = v2[l] + precondMat[l] * (r2[l] - proj[l])
+            else:
+                vy2[l] = v2[l] + r2[l] - y[l] - proj_sc(v2[l] + r2[l] - y[l], epsilon[l])  # ! should be row vectors
             v2[l] = v2[l] + lambda3 * (vy2[l] - v2[l])
             u2.append(Gt[l].dot(v2[l][:, np.newaxis]))
 
@@ -738,9 +756,9 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
         # Adjust the l2 bound #
         if adapt_eps and it + 1 >= param.adapt_eps_begin and rel_error < param.adapt_eps_rel_obj \
                 and it + 1 >= eps_it + param.adapt_eps_step:
-            ind_check = residualCheck < param.adapt_eps_tol_in * epsilon \
-                        or residualCheck > param.adapt_eps_tol_out * epsilon
-            if len(ind_check) > 0:
+            ind_check = (residualCheck < param.adapt_eps_tol_in * epsilon) \
+                        | (residualCheck > param.adapt_eps_tol_out * epsilon)
+            if ind_check.any() > 0:
                 epsilon[ind_check] = epsilon[ind_check] + param.adapt_eps_change_percentage * (residualCheck[ind_check] - epsilon[ind_check])
                 epsilons[ind_check] = param.adapt_eps_tol_out * epsilon[ind_check]  # Update stopping epsilon
                 eps_it += 1

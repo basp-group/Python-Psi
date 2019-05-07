@@ -99,15 +99,15 @@ def proj_ellipse(y, alpha, pU, z0, epsilon, max_iter, min_iter, tol):
     """
     Elliptical projection solver
 
-    :param y: data, complex column vector [M]
-    :param alpha: coefficients to be processed, complex column vector [M]
-    :param pU: preconditioning matrix, column vector [M]
+    :param y: data, complex vector [M]
+    :param alpha: coefficients to be processed, complex vector [M]
+    :param pU: preconditioning matrix, real vector [M]
     :param z0: initial guess
     :param epsilon: l2-ball epsilon
     :param max_iter: max iteration
     :param min_iter: min iteration
     :param tol: error tolerance, stopping criterion
-    :return: coefficients after projection, column vector [M]
+    :return: coefficients after projection, real vector [M]
     """
     mu = 1. / (pU.max()**2)
     rel_err = 1.
