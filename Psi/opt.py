@@ -666,10 +666,6 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
 
     tau = 0.99/(sigma0*param.nu0 + sigma1*param.nu1 + sigma2*param.nu2)     # step size for the primal
 
-    omega0 = sigma0          # omega sizes
-    omega1 = sigma1
-    omega2 = sigma2
-
     # Reweight scheme #
     weights0 = np.ones(L)       # weights matrix for nuclear-norm term
     weights1 = np.ones((P, N))     # weight matrix for l21-norm term
@@ -698,7 +694,7 @@ def wide_band_primal_dual(y, A, At, G, Gt, mask_G, HyperSARA, epsilon, epsilons,
     for it in np.arange(param.max_iter):
 
         # primal update #
-        ysol = xsol - tau*(omega0 * g0 + omega1 * g1 + omega2 * g2)
+        ysol = xsol - tau*(g0 + g1 + g2)
         if mask_image:                        # mask invalid region of the image
             ysol = ysol[maskImage]
         if positivity:
