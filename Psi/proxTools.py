@@ -30,7 +30,7 @@ def hard(alpha, th):
     :param th: threshold level
     :return: wavelet coefficients after hard threshold
     """
-    return alpha * (alpha > th)
+    return alpha * (np.abs(alpha) > th)
 
 
 def proj_sc(alpha, rad):
