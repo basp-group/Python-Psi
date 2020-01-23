@@ -73,7 +73,7 @@ R = SF\Phi^t,
 
 where S is a selection operation to select significant singular values. 
 
-### Solution of inverse problem
+### Solution of inverse problem (SARA)
 Recall the inverse imaging problem:
 > yn = \Phi x + n,
 
@@ -89,12 +89,13 @@ where \Psi is the sparse representation of x, which is a concatenation of orthog
 This convex optimization problem is solved by Forward-Backward Primal-Dual algorithm. Due to the issue of the biais caused by l_1 norm, a reweighted l_1 scheme to alleviate the biais is integrated in the algorithm.
 
 <a name="auth"></a>
+
 ## Authors
 
 * **Ming Jiang [ming.jiang@epfl.ch](mailto:ming.jiang@epfl.ch)**
 
 <a name="ref"></a>
 ## References
-- Forward-Backward Primal-Dual - *Initial work by Alexandru Onose et al.* - [Scalable splitting algorithms for big-data interferometric imaging in the SKA era] Mon. Not. Roy. Astron. Soc., 462(4):4314-4335, 2016
-- Fourier dimenonality reduction - *Initial work by Vijay Kartik et al.* - [A Fourier dimensionality reduction model for big data interferometric imaging], Mon. Not. Roy. Astron. Soc., 480(2):2382-2400, 2017.
-- HyperSARA - *Initial work by Abdullah Abdulaziz et al.* - [Wideband Super-resolution Imaging in Radio Interferometry via Low Rankness and Joint Average Sparsity Models (HyperSARA)], Mon. Not. Roy. Astron. Soc., 489(1):1230-1248, Oct. 2019.
+- Forward-Backward Primal-Dual - *Initial work by Alexandru Onose et al.* - [Scalable splitting algorithms for big-data interferometric imaging in the SKA era](https://academic.oup.com/mnras/article/462/4/4314/2589458), Mon. Not. Roy. Astron. Soc., 462(4):4314-4335, 2016
+- Fourier dimenonality reduction - *Initial work by Vijay Kartik et al.* - [A Fourier dimensionality reduction model for big data interferometric imaging](https://academic.oup.com/mnras/article/468/2/2382/3061880), Mon. Not. Roy. Astron. Soc., 480(2):2382-2400, 2017.
+- HyperSARA - *Initial work by Abdullah Abdulaziz et al.* - [Wideband Super-resolution Imaging in Radio Interferometry via Low Rankness and Joint Average Sparsity Models (HyperSARA)](https://academic.oup.com/mnras/article/489/1/1230/5543954), Mon. Not. Roy. Astron. Soc., 489(1):1230-1248, Oct. 2019.
